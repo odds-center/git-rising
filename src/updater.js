@@ -9,7 +9,7 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-const REPO = 'odds-center/gittree';
+const REPO = 'odds-center/git-rising';
 const CHECK_EVERY = 6 * 60 * 60 * 1000;
 
 const newer = (a, b) => {

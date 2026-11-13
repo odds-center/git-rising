@@ -7,7 +7,7 @@
 
 ## 설치
 
-**릴리즈에서 받기** — [Releases](https://github.com/odds-center/gittree/releases) 에서 `.dmg`(mac) / `.exe`(Windows).
+**릴리즈에서 받기** — [Releases](https://github.com/odds-center/git-rising/releases) 에서 `.dmg`(mac) / `.exe`(Windows).
 서명 안 된 앱이라 맥에서 처음 열 때는 우클릭 → 열기. 이후에는 앱이 **스스로 업데이트**합니다.
 
 **소스에서 바로 설치 (macOS)**
