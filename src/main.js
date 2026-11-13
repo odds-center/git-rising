@@ -44,7 +44,7 @@ if (!app.requestSingleInstanceLock()) {
       minWidth: 900,
       minHeight: 500,
       backgroundColor: '#1b1d23',
-      title: 'gittree',
+      title: 'Git Rising',
       titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
     });

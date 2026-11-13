@@ -6,7 +6,7 @@ const LS = {
   get(k, d) { try { const v = localStorage.getItem('gittree.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('gittree.' + k, JSON.stringify(v)); } catch {} },
 };
-const ROW = 30, LANE = 22, PAD = 14, AV_R = 10;
+const ROW = 24, LANE = 16, PAD = 8, NODE_R = 4.5, REF_W = 150;
 const COLORS = ['#36b6d6', '#4f7cff', '#b45cf0', '#e055c8', '#f0647a', '#f2913d', '#e5c443', '#47c27a', '#2bb3a3', '#8d8cff'];
 const laneColor = (i) => COLORS[i % COLORS.length];
 
@@ -167,9 +167,9 @@ function rebuild() {
   S.index = new Map(list.map((c, i) => [c.sha, i]));
   const L = computeLayout(list);
   S.rows = L.rows; S.maxLanes = L.maxLanes;
-  const gw = Math.min(Math.max(80, PAD * 2 + S.maxLanes * LANE), 420);
+  const gw = Math.min(Math.max(48, PAD * 2 + S.maxLanes * LANE), 320);
   S.graphW = gw;
-  document.documentElement.style.setProperty('--cols', `190px ${gw}px minmax(160px,1fr) 110px 92px 66px`);
+  document.documentElement.style.setProperty('--cols', `${REF_W}px ${gw}px minmax(160px,1fr) 100px 84px 62px`);
   $('#graph-inner').style.height = list.length * ROW + (S.hasMore ? 40 : 0) + 'px';
   $('#sb-count').textContent = S.commits.length + (S.hasMore ? '+' : '');
   computeMatches();
@@ -269,7 +269,7 @@ function renderRows(force) {
 function drawGraph(first, last) {
   const cv = $('#graph-canvas');
   const dpr = window.devicePixelRatio || 1;
-  const x0 = 190; // ref column width
+  const x0 = REF_W;
   const w = x0 + S.graphW;
   const top = first * ROW;
   const hpx = (last - first + 1) * ROW;
@@ -282,10 +282,10 @@ function drawGraph(first, last) {
   g.clearRect(0, 0, w, hpx);
   g.save();
   g.beginPath(); g.rect(x0, 0, S.graphW, hpx); g.clip();
-  const X = (lane) => x0 + PAD + lane * LANE + LANE / 2 - 4;
+  const X = (lane) => x0 + PAD + lane * LANE + LANE / 2;
   const Y = (r) => (r - first) * ROW + ROW / 2;
   const list = S.view;
-  g.lineWidth = 2;
+  g.lineWidth = 1.75;
   // edges (draw one row above to cover lines entering the viewport)
   for (let r = Math.max(0, first - 1); r <= last; r++) {
     const row = S.rows[r];
@@ -299,7 +299,7 @@ function drawGraph(first, last) {
       g.beginPath(); g.moveTo(a, y1);
       if (a === b) g.lineTo(b, y2);
       else {
-        const rad = Math.min(8, Math.abs(b - a) / 2, ROW / 2);
+        const rad = Math.min(6, Math.abs(b - a) / 2, ROW / 2);
         const sx = Math.sign(b - a);
         if (e.top && !e.bot) { // leave the node horizontally, then go down the lane
           g.lineTo(b - sx * rad, y1); g.quadraticCurveTo(b, y1, b, y1 + rad); g.lineTo(b, y2);
@@ -320,19 +320,13 @@ function drawGraph(first, last) {
     const x = X(row.col), y = Y(r), col = laneColor(row.col);
     if (c.wip) {
       g.setLineDash([3, 2]); g.strokeStyle = col; g.fillStyle = '#1b1d23';
-      g.beginPath(); g.arc(x, y, AV_R - 1, 0, Math.PI * 2); g.fill(); g.stroke(); g.setLineDash([]);
+      g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, NODE_R, 0, Math.PI * 2); g.fill(); g.stroke(); g.setLineDash([]); g.lineWidth = 2;
       continue;
     }
-    if (c.parents.length > 1) {
-      g.fillStyle = col; g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill();
-      continue;
-    }
-    g.fillStyle = col; g.beginPath(); g.arc(x, y, AV_R + 1.5, 0, Math.PI * 2); g.fill();
-    g.fillStyle = avColor(c.email); g.beginPath(); g.arc(x, y, AV_R - 1, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#fff'; g.font = '600 9px -apple-system, "Apple SD Gothic Neo", sans-serif';
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(initials(c.author), x, y + 0.5);
-    if (c.sha === S.info?.head) { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, AV_R + 4, 0, Math.PI * 2); g.stroke(); g.lineWidth = 2; }
+    const merge = c.parents.length > 1;
+    g.fillStyle = merge ? '#1b1d23' : col; g.strokeStyle = col; g.lineWidth = 2;
+    g.beginPath(); g.arc(x, y, merge ? NODE_R - 0.5 : NODE_R, 0, Math.PI * 2); g.fill(); if (merge) g.stroke();
+    if (c.sha === S.info?.head) { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, NODE_R + 3, 0, Math.PI * 2); g.stroke(); g.lineWidth = 2; }
   }
   g.restore();
   // connector from ref pill to node
@@ -341,7 +335,7 @@ function drawGraph(first, last) {
     if (c.wip || !S.refsBySha.has(c.sha)) continue;
     const row = S.rows[r];
     g.strokeStyle = laneColor(row.col); g.globalAlpha = 0.55; g.lineWidth = 1.5;
-    g.beginPath(); g.moveTo(x0 - 4, Y(r)); g.lineTo(X(row.col) - AV_R - 2, Y(r)); g.stroke();
+    g.beginPath(); g.moveTo(x0 - 4, Y(r)); g.lineTo(X(row.col) - NODE_R - 2, Y(r)); g.stroke();
     g.globalAlpha = 1;
   }
 }
@@ -395,8 +389,8 @@ function fileListHTML(files, wip) {
 function statsHTML(files) {
   const c = { M: 0, A: 0, D: 0, R: 0 };
   for (const f of files) { const s = f.status === '?' ? 'A' : f.status === 'C' ? 'A' : f.status === 'U' || f.status === 'T' ? 'M' : f.status; c[s] = (c[s] || 0) + 1; }
-  return `<div class="d-stats">${c.M ? `<span class="m">✎ ${c.M} modified</span>` : ''}${c.A ? `<span class="a">+ ${c.A} added</span>` : ''}${c.D ? `<span class="d">− ${c.D} deleted</span>` : ''}${c.R ? `<span class="r">→ ${c.R} renamed</span>` : ''}
-    <div class="seg"><button data-fv="path" class="${S.fileView === 'path' ? 'on' : ''}">Path</button><button data-fv="tree" class="${S.fileView === 'tree' ? 'on' : ''}">Tree</button></div></div>`;
+  return `<div class="d-stats">${c.M ? `<span class="m">✎ 수정 ${c.M}</span>` : ''}${c.A ? `<span class="a">+ 추가 ${c.A}</span>` : ''}${c.D ? `<span class="d">− 삭제 ${c.D}</span>` : ''}${c.R ? `<span class="r">→ 이동 ${c.R}</span>` : ''}
+    <div class="seg"><button data-fv="path" title="전체 경로로 보기" class="${S.fileView === 'path' ? 'on' : ''}">경로</button><button data-fv="tree" title="폴더별로 묶어 보기" class="${S.fileView === 'tree' ? 'on' : ''}">폴더</button></div></div>`;
 }
 
 function renderDetail() {
@@ -408,8 +402,8 @@ function renderDetail() {
     S.detailFiles = [...staged, ...rest];
     el.innerHTML = `<div class="d-top"><span>작업 중인 변경사항</span><span>${esc(S.info?.branch || 'detached')}</span></div>
       ${statsHTML(S.status)}
-      ${staged.length ? `<div class="wip-sec">STAGED (${staged.length})</div>` + fileListHTML(staged, true).replace(/data-fi="(\d+)"/g, (m, i) => `data-fi="${i}"`) : ''}
-      ${rest.length ? `<div class="wip-sec">UNSTAGED (${rest.length})</div>` + fileListHTML(rest, true).replace(/data-fi="(\d+)"/g, (m, i) => `data-fi="${+i + staged.length}"`) : ''}`;
+      ${staged.length ? `<div class="wip-sec" title="git add 된 파일 — 다음 커밋에 들어갑니다">스테이징됨 (${staged.length})</div>` + fileListHTML(staged, true).replace(/data-fi="(\d+)"/g, (m, i) => `data-fi="${i}"`) : ''}
+      ${rest.length ? `<div class="wip-sec" title="아직 git add 하지 않은 변경 / 새 파일">스테이징 안 됨 (${rest.length})</div>` + fileListHTML(rest, true).replace(/data-fi="(\d+)"/g, (m, i) => `data-fi="${+i + staged.length}"`) : ''}`;
     return;
   }
   S.detailFiles = d.files;
@@ -418,14 +412,14 @@ function renderDetail() {
   const labels = refLabels(d.sha);
   const committerDiff = d.committer !== d.author;
   el.innerHTML = `
-    <div class="d-top"><span>commit: <span class="sha" data-copy="${d.sha}" title="클릭해서 복사">${d.sha.slice(0, 7)}</span></span><span>${d.parents.length > 1 ? 'merge' : ''}</span></div>
+    <div class="d-top"><span>커밋 <span class="sha" data-copy="${d.sha}" title="클릭하면 전체 SHA 복사">${d.sha.slice(0, 7)}</span></span><span>${d.parents.length > 1 ? '머지 커밋' : ''}</span></div>
     <div class="d-msg"><h2>${esc(subject)}</h2>${body ? `<pre>${esc(body)}</pre>` : ''}</div>
     ${labels.length ? `<div class="d-refs">${labels.map((l) => pillHTML(l, laneColor(S.rows[S.index.get(d.sha)]?.col || 0), `data-ref="${esc(l.type)}:${esc(l.name)}"`)).join('')}</div>` : ''}
     <div class="d-author">
       <div class="av" style="background:${avColor(d.email)}">${esc(initials(d.author))}</div>
-      <div class="who"><div class="nm">${esc(d.author)}</div><div class="sub" title="${esc(d.email)}">authored ${fmtDate(d.time)}</div>
-        ${committerDiff ? `<div class="sub">committed by ${esc(d.committer)} ${fmtDate(d.committerTime)}</div>` : ''}</div>
-      <div class="par">${d.parents.length ? 'parent' + (d.parents.length > 1 ? 's' : '') : 'root'}${d.parents.map((p) => `<a data-goto="${p}">${p.slice(0, 7)}</a>`).join('')}</div>
+      <div class="who"><div class="nm">${esc(d.author)}</div><div class="sub" title="${esc(d.email)}">작성 ${fmtDate(d.time)}</div>
+        ${committerDiff ? `<div class="sub">커밋 ${esc(d.committer)} ${fmtDate(d.committerTime)}</div>` : ''}</div>
+      <div class="par">${d.parents.length ? '부모' : '최초 커밋'}${d.parents.map((p) => `<a data-goto="${p}">${p.slice(0, 7)}</a>`).join('')}</div>
     </div>
     ${statsHTML(d.files)}
     ${d.files.length ? fileListHTML(d.files, false) : '<div class="placeholder">변경된 파일 없음</div>'}`;
@@ -533,7 +527,7 @@ function renderSidebar() {
 
   let h = '';
   const ll = local.filter(match);
-  h += section('local', 'LOCAL', '🖥', local.length, q ? flat(ll) : treeHTML(buildTree(ll, (r) => r.name), 0, 'local'));
+  h += section('local', '로컬 브랜치', '⑂', local.length, q ? flat(ll) : treeHTML(buildTree(ll, (r) => r.name), 0, 'local'));
   const rl = remote.filter(match);
   let rb = '';
   const byRemote = new Map();
@@ -544,11 +538,11 @@ function renderSidebar() {
     rb += `<div class="sb-item folder${col ? ' collapsed' : ''}" style="padding-left:12px" data-fold="${esc(key)}"><span class="chev">▾</span><span class="nm" style="color:var(--text)">☁ ${esc(rn)}</span></div>`;
     if (!col) rb += q ? list.map((r) => leafHTML(r, r.name.slice(rn.length + 1), 1.9)).join('') : treeHTML(buildTree(list, (r) => r.name.slice(rn.length + 1)), 1, key);
   }
-  h += section('remote', 'REMOTE', '☁', remote.length, rb);
-  h += section('tags', 'TAGS', '◆', tags.length, flat(tags.filter(match)));
+  h += section('remote', '원격 브랜치', '☁', remote.length, rb);
+  h += section('tags', '태그', '◆', tags.length, flat(tags.filter(match)));
   const wts = S.meta.worktrees || [];
-  h += section('wt', 'WORKTREES', '⧉', wts.length, wts.map((w) => `<div class="sb-item" style="padding-left:24px" data-wt="${esc(w.head || '')}" title="${esc(w.path)}"><span class="ic">⧉</span><span class="nm">${esc(w.branch || w.path.split('/').pop())}</span><span class="track">${esc(w.path.split('/').pop())}</span></div>`).join(''));
-  h += `<div class="sb-sec-h" style="cursor:default"><span class="chev"></span>⊻ STASHES<span class="cnt">${S.stashes}</span></div>`;
+  h += section('wt', '워크트리', '⧉', wts.length, wts.map((w) => `<div class="sb-item" style="padding-left:24px" data-wt="${esc(w.head || '')}" title="${esc(w.path)}"><span class="ic">⧉</span><span class="nm">${esc(w.branch || w.path.split('/').pop())}</span><span class="track">${esc(w.path.split('/').pop())}</span></div>`).join(''));
+  h += `<div class="sb-sec-h" style="cursor:default"><span class="chev"></span>⊻ 스태시<span class="cnt">${S.stashes}</span></div>`;
   $('#sb-body').innerHTML = h;
 }
 
@@ -562,7 +556,7 @@ function findRef(key) {
 function saveTabs() { LS.set('tabs', S.tabs); LS.set('active', S.repo); }
 function renderTabs() {
   $('#tab-list').innerHTML = S.tabs.map((t) => `<div class="tab${t === S.repo ? ' active' : ''}" data-tab="${esc(t)}" title="${esc(t)}"><span>⑂ ${esc(t.split('/').pop())}</span><span class="x" data-close="${esc(t)}">✕</span></div>`).join('');
-  document.title = S.info ? `${S.info.name} — gittree` : 'gittree';
+  document.title = S.info ? `${S.info.name} — Git Rising` : 'Git Rising';
 }
 function renderToolbar() {
   $('#tb-repo-name').textContent = S.info?.name || '—';
@@ -576,8 +570,8 @@ function renderBanner() {
   if (!op) { b.hidden = true; return; }
   b.hidden = false;
   const conflicts = S.status.filter((f) => f.status === 'U').length;
-  b.innerHTML = `<b>${op} 진행 중</b>${conflicts ? ` — 충돌 파일 ${conflicts}개. 해결 후 add 하고 Continue 하세요.` : ''}<span class="tb-spacer"></span>
-    ${op !== 'merge' ? `<button data-banner="cont">Continue</button>` : ''}<button data-banner="abort">Abort</button>`;
+  b.innerHTML = `<b>${{ merge: '머지', rebase: '리베이스', 'cherry-pick': '체리픽', revert: '되돌리기' }[op] || op} 진행 중</b>${conflicts ? ` — 충돌 파일 ${conflicts}개. 충돌을 해결하고 git add 한 뒤 [계속] 을 누르세요.` : ''}<span class="tb-spacer"></span>
+    ${op !== 'merge' ? `<button data-banner="cont" title="git ${op} --continue">계속</button>` : ''}<button data-banner="abort" title="git ${op} --abort — 시작 전 상태로 되돌립니다">중단</button>`;
 }
 
 async function openTab(repo) {
@@ -649,11 +643,11 @@ function modal({ title, text, input, inputValue = '', textarea, checkbox, ok = '
 }
 
 async function newBranch(sha) {
-  const r = await modal({ title: '새 브랜치', text: `${sha === 'HEAD' ? 'HEAD' : sha.slice(0, 7)} 에서 브랜치 생성`, input: 'branch-name', checkbox: { label: '생성 후 checkout', checked: true }, ok: '생성' });
+  const r = await modal({ title: '새 브랜치', text: `${sha === 'HEAD' ? 'HEAD' : sha.slice(0, 7)} 에서 브랜치 생성`, input: 'branch-name', checkbox: { label: '만든 뒤 바로 이 브랜치로 전환', checked: true }, ok: '생성' });
   if (r) run('branch', { name: r.value, sha, checkout: r.checked }, { label: `브랜치 ${r.value} 생성` });
 }
 async function newTag(sha, annotated) {
-  const r = await modal({ title: annotated ? 'Annotated tag 생성' : '태그 생성', text: sha.slice(0, 7), input: 'v1.0.0', textarea: annotated ? '태그 메시지' : null, ok: '생성' });
+  const r = await modal({ title: annotated ? '설명 있는 태그 만들기' : '태그 만들기', text: `${sha.slice(0, 7)} 에 태그를 답니다. 원격에 올리려면 git push --tags`, input: 'v1.0.0', textarea: annotated ? '태그 메시지 (예: 릴리즈 노트)' : null, ok: '생성' });
   if (r) run('tag', { name: r.value, sha, message: annotated ? r.text || r.value : undefined }, { label: `태그 ${r.value}` });
 }
 async function confirmRun(title, text, action, args, label, danger = true) {
@@ -662,12 +656,12 @@ async function confirmRun(title, text, action, args, label, danger = true) {
 }
 
 const ACT = {
-  fetch: () => run('fetch', {}, { label: 'Fetch' }),
-  pull: () => run('pull', {}, { label: 'Pull' }),
-  push: () => run('push', {}, { label: 'Push' }),
+  fetch: () => run('fetch', {}, { label: '가져오기' }),
+  pull: () => run('pull', {}, { label: '풀' }),
+  push: () => run('push', {}, { label: '푸시' }),
   newbranch: () => newBranch('HEAD'),
-  stash: () => run('stash', {}, { label: 'Stash' }),
-  pop: () => run('pop', {}, { label: 'Stash pop' }),
+  stash: () => run('stash', {}, { label: '스태시' }),
+  pop: () => run('pop', {}, { label: '스태시 꺼내기' }),
   terminal: () => run('terminal', {}, { quiet: true }),
   reveal: () => run('reveal', {}, { quiet: true }),
 };
@@ -685,7 +679,8 @@ function showMenu(items, x, y) {
       if (it.head) { m.insertAdjacentHTML('beforeend', `<div class="mhead">${esc(it.head)}</div>`); continue; }
       const el = document.createElement('div');
       el.className = 'mi' + (it.danger ? ' danger' : '') + (it.disabled ? ' disabled' : '');
-      el.innerHTML = `<span>${esc(it.label)}</span>${it.sub ? '<span class="sub-caret">▶</span>' : ''}`;
+      el.innerHTML = `<span>${esc(it.label)}</span>${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}${it.sub ? '<span class="sub-caret">▶</span>' : ''}`;
+      if (it.tip) el.title = it.tip;
       if (it.sub) {
         el.onmouseenter = () => {
           m.querySelectorAll('.mi.open').forEach((o) => o.classList.remove('open'));
@@ -716,27 +711,27 @@ function branchItems(ref) {
   const isCur = ref.type === 'branch' && name === cur;
   const items = [];
   if (ref.type !== 'tag' && !isCur && cur) {
-    items.push({ label: `Fast-forward ${cur} to ${name}`, run: () => run('ff', { ref: name }, { label: 'Fast-forward' }) });
-    items.push({ label: `Merge ${name} into ${cur}`, run: () => confirmRun('Merge', `${name} → ${cur}`, 'merge', { ref: name }, 'Merge', false) });
-    items.push({ label: `Rebase ${cur} onto ${name}`, run: () => confirmRun('Rebase', `${cur} 를 ${name} 위로 rebase 합니다`, 'rebase', { ref: name }, 'Rebase', false) });
+    items.push({ label: `${cur} 를 ${name} 까지 빨리감기`, hint: 'merge --ff-only', tip: `${cur} 브랜치를 ${name} 위치로 앞당깁니다. 갈라진 커밋이 있으면 실패해요 (안전).`, run: () => run('ff', { ref: name }, { label: '빨리감기' }) });
+    items.push({ label: `${name} 를 ${cur} 에 머지`, hint: 'merge', tip: `${name} 의 변경을 ${cur} 에 합치는 머지 커밋을 만듭니다.`, run: () => confirmRun('머지', `${name} → ${cur}\n${name} 의 변경을 현재 브랜치(${cur})에 합칩니다.`, 'merge', { ref: name }, '머지', false) });
+    items.push({ label: `${cur} 를 ${name} 위로 리베이스`, hint: 'rebase', tip: `${cur} 의 커밋들을 ${name} 끝으로 옮겨 다시 쌓습니다. 커밋 SHA 가 바뀌어요.`, run: () => confirmRun('리베이스', `${cur} 의 커밋들을 ${name} 위로 옮깁니다.\n이미 푸시한 커밋이면 강제 푸시가 필요해질 수 있어요.`, 'rebase', { ref: name }, '리베이스', false) });
     items.push('-');
   }
   if (!isCur) {
-    if (ref.type === 'branch') items.push({ label: `Checkout ${name}`, run: () => run('checkout', { ref: name, kind: 'branch' }, { label: `Checkout ${name}` }) });
-    else if (ref.type === 'remote') items.push({ label: `Checkout ${name} (로컬 브랜치로)`, run: () => run('checkout', { ref: name, kind: 'remote' }, { label: `Checkout ${name}` }) });
-    else items.push({ label: `Checkout tag ${name} (detached)`, run: () => run('checkout', { ref: ref.sha, kind: 'commit' }, { label: 'Checkout' }) });
+    if (ref.type === 'branch') items.push({ label: `${name} 로 전환`, hint: 'checkout', run: () => run('checkout', { ref: name, kind: 'branch' }, { label: `${name} 로 전환` }) });
+    else if (ref.type === 'remote') items.push({ label: `${name} 를 로컬 브랜치로 받아 전환`, hint: 'checkout -b --track', tip: '같은 이름의 로컬 브랜치를 만들어(이미 있으면 그걸로) 원격을 추적하게 합니다.', run: () => run('checkout', { ref: name, kind: 'remote' }, { label: `${name} 전환` }) });
+    else items.push({ label: `태그 ${name} 로 이동 (detached)`, hint: 'checkout', run: () => run('checkout', { ref: ref.sha, kind: 'commit' }, { label: '이동' }) });
   }
   return items;
 }
 
 function deleteItems(ref) {
   const cur = S.info?.branch;
-  if (ref.type === 'branch' && ref.name !== cur) return [{ label: `Delete ${ref.name}`, danger: true, run: async () => {
-    const r = await modal({ title: `브랜치 삭제: ${ref.name}`, text: '로컬 브랜치를 삭제합니다.', checkbox: { label: '머지되지 않았어도 강제 삭제 (-D)', checked: false }, ok: '삭제', danger: true });
+  if (ref.type === 'branch' && ref.name !== cur) return [{ label: `브랜치 ${ref.name} 삭제`, hint: 'branch -d', danger: true, run: async () => {
+    const r = await modal({ title: `브랜치 삭제: ${ref.name}`, text: '로컬 브랜치만 삭제합니다. 원격 브랜치는 그대로예요.', checkbox: { label: '머지 안 된 커밋이 있어도 강제로 삭제 (-D)', checked: false }, ok: '삭제', danger: true });
     if (r) run('deleteBranch', { name: ref.name, force: r.checked }, { label: `${ref.name} 삭제` });
   } }];
-  if (ref.type === 'remote') return [{ label: `Delete ${ref.name} (원격에서)`, danger: true, run: () => confirmRun('원격 브랜치 삭제', `git push ${ref.name.split('/')[0]} --delete ${ref.name.slice(ref.name.indexOf('/') + 1)}`, 'deleteRemoteBranch', { ref: ref.name }, '원격 브랜치 삭제') }];
-  if (ref.type === 'tag') return [{ label: `Delete tag ${ref.name} (로컬)`, danger: true, run: () => confirmRun('태그 삭제', ref.name, 'deleteTag', { name: ref.name }, '태그 삭제') }];
+  if (ref.type === 'remote') return [{ label: `원격 브랜치 ${ref.name} 삭제`, hint: 'push --delete', danger: true, run: () => confirmRun('원격 브랜치 삭제', `GitHub 등 원격 저장소에서 브랜치를 지웁니다. 다른 사람도 영향을 받아요.\ngit push ${ref.name.split('/')[0]} --delete ${ref.name.slice(ref.name.indexOf('/') + 1)}`, 'deleteRemoteBranch', { ref: ref.name }, '원격 브랜치 삭제') }];
+  if (ref.type === 'tag') return [{ label: `태그 ${ref.name} 삭제 (로컬)`, hint: 'tag -d', danger: true, run: () => confirmRun('태그 삭제', `로컬 태그 ${ref.name} 를 삭제합니다.`, 'deleteTag', { name: ref.name }, '태그 삭제') }];
   return [];
 }
 
@@ -748,30 +743,30 @@ function commitMenu(c, ref) {
   if (!ref) ref = refLabels(sha).find((r) => r.type !== 'tag') || null;
   const items = [{ head: `${short} — ${c.subject.slice(0, 50)}` }];
   if (ref) items.push(...branchItems(ref));
-  items.push({ label: 'Checkout this commit (detached)', disabled: isHead && !S.info?.branch, run: () => run('checkout', { ref: sha, kind: 'commit' }, { label: 'Checkout' }) });
+  items.push({ label: '이 커밋으로 이동 (detached)', hint: 'checkout', tip: '브랜치 없이 이 커밋 상태를 그대로 꺼내 봅니다. 여기서 커밋하려면 브랜치를 만드세요.', disabled: isHead && !S.info?.branch, run: () => run('checkout', { ref: sha, kind: 'commit' }, { label: '이동' }) });
   items.push('-');
-  items.push({ label: 'Create branch here', run: () => newBranch(sha) });
-  items.push({ label: 'Cherry pick commit', disabled: isHead, run: () => confirmRun('Cherry pick', `${short} 를 ${cur} 에 cherry-pick`, 'cherrypick', { sha }, 'Cherry pick', false) });
-  items.push({ label: `Reset ${cur} to this commit`, sub: [
-    { label: 'Soft — 변경사항 staged 유지', run: () => confirmRun('Reset --soft', `${cur} → ${short}`, 'reset', { sha, mode: 'soft' }, 'Reset soft', false) },
-    { label: 'Mixed — 변경사항 working tree 유지', run: () => confirmRun('Reset --mixed', `${cur} → ${short}`, 'reset', { sha, mode: 'mixed' }, 'Reset mixed', false) },
-    { label: 'Hard — 변경사항 모두 버림', danger: true, run: () => confirmRun('Reset --hard', `${cur} → ${short}\n커밋되지 않은 변경사항이 모두 사라집니다.`, 'reset', { sha, mode: 'hard' }, 'Reset hard') },
+  items.push({ label: '여기서 새 브랜치', hint: 'branch', run: () => newBranch(sha) });
+  items.push({ label: `${cur} 에 이 커밋 복사 (체리픽)`, hint: 'cherry-pick', tip: '이 커밋의 변경만 현재 브랜치에 새 커밋으로 붙입니다.', disabled: isHead, run: () => confirmRun('체리픽', `${short} 의 변경을 ${cur} 에 새 커밋으로 적용합니다.`, 'cherrypick', { sha }, '체리픽', false) });
+  items.push({ label: `${cur} 를 이 커밋으로 되돌리기`, hint: 'reset', sub: [
+    { label: 'Soft — 변경은 스테이징 상태로 남김', hint: '--soft', run: () => confirmRun('리셋 (soft)', `${cur} → ${short}\n이후 커밋들의 변경은 스테이징된 상태로 남습니다.`, 'reset', { sha, mode: 'soft' }, '리셋', false) },
+    { label: 'Mixed — 변경은 작업 폴더에 남김', hint: '--mixed', run: () => confirmRun('리셋 (mixed)', `${cur} → ${short}\n이후 커밋들의 변경은 작업 폴더에 (add 안 된 상태로) 남습니다.`, 'reset', { sha, mode: 'mixed' }, '리셋', false) },
+    { label: 'Hard — 변경까지 전부 버림', hint: '--hard', danger: true, run: () => confirmRun('리셋 (hard)', `${cur} → ${short}\n이후 커밋과 커밋 안 한 변경사항이 모두 사라집니다. 되돌리기 어려워요.`, 'reset', { sha, mode: 'hard' }, '리셋') },
   ] });
-  items.push({ label: 'Revert commit', run: () => confirmRun('Revert', `${short} 를 되돌리는 커밋을 만듭니다`, 'revert', { sha }, 'Revert', false) });
+  items.push({ label: '이 커밋 취소하는 커밋 만들기', hint: 'revert', tip: '기록은 그대로 두고, 이 커밋의 변경을 반대로 적용한 새 커밋을 만듭니다. 푸시한 커밋을 되돌릴 때 안전해요.', run: () => confirmRun('되돌리기 (revert)', `${short} 의 변경을 반대로 적용하는 새 커밋을 만듭니다.`, 'revert', { sha }, '되돌리기', false) });
   if (ref) { const del = deleteItems(ref); if (del.length) items.push('-', ...del); }
   items.push('-');
-  if (ref) items.push({ label: 'Copy branch name', run: () => copy(ref.name) });
-  items.push({ label: 'Copy commit sha', run: () => copy(sha) });
+  if (ref) items.push({ label: '브랜치 이름 복사', run: () => copy(ref.name) });
+  items.push({ label: '커밋 SHA 복사', run: () => copy(sha) });
   const remoteName = (ref?.remotes?.[0] || ref?.name || '').split('/')[0];
   const web = S.meta.remotes?.[S.meta.remotes?.[remoteName] ? remoteName : 'origin'] || Object.values(S.meta.remotes || {})[0];
   if (web) {
     const remoteRef = ref?.type === 'remote' ? ref.name : ref?.remotes?.[0];
-    if (remoteRef) items.push({ label: `Copy link to branch: ${remoteRef}`, run: () => copy(`${web}/tree/${remoteRef.slice(remoteRef.indexOf('/') + 1)}`) });
-    items.push({ label: 'Copy link to this commit on remote', run: () => copy(`${web}/commit/${sha}`) });
+    if (remoteRef) items.push({ label: `브랜치 링크 복사 (${remoteRef})`, run: () => copy(`${web}/tree/${remoteRef.slice(remoteRef.indexOf('/') + 1)}`) });
+    items.push({ label: '커밋 링크 복사 (GitHub)', run: () => copy(`${web}/commit/${sha}`) });
   }
   items.push('-');
-  items.push({ label: 'Create tag here', run: () => newTag(sha, false) });
-  items.push({ label: 'Create annotated tag here', run: () => newTag(sha, true) });
+  items.push({ label: '여기에 태그 달기', hint: 'tag', run: () => newTag(sha, false) });
+  items.push({ label: '여기에 설명 있는 태그 달기', hint: 'tag -a', tip: '메시지·작성자·날짜가 함께 저장되는 태그 (릴리즈용)', run: () => newTag(sha, true) });
   return items;
 }
 
@@ -781,7 +776,7 @@ function refMenu(ref) {
   const items = [{ head: ref.name }, ...branchItems(ref)];
   const del = deleteItems(ref);
   if (del.length) items.push('-', ...del);
-  items.push('-', { label: 'Copy branch name', run: () => copy(ref.name) }, { label: 'Copy commit sha', run: () => copy(ref.sha) });
+  items.push('-', { label: '브랜치 이름 복사', run: () => copy(ref.name) }, { label: '커밋 SHA 복사', run: () => copy(ref.sha) });
   return items;
 }
 
@@ -818,8 +813,8 @@ function bind() {
     const pill = e.target.closest('[data-ref]');
     if (!pill) return;
     const ref = findRef(pill.dataset.ref);
-    if (ref && ref.type === 'branch' && ref.name !== S.info?.branch) run('checkout', { ref: ref.name, kind: 'branch' }, { label: `Checkout ${ref.name}` });
-    else if (ref && ref.type === 'remote') run('checkout', { ref: ref.name, kind: 'remote' }, { label: `Checkout ${ref.name}` });
+    if (ref && ref.type === 'branch' && ref.name !== S.info?.branch) run('checkout', { ref: ref.name, kind: 'branch' }, { label: `${ref.name} 로 전환` });
+    else if (ref && ref.type === 'remote') run('checkout', { ref: ref.name, kind: 'remote' }, { label: `${ref.name} 로 전환` });
   });
   $('#rows').addEventListener('contextmenu', (e) => {
     const row = e.target.closest('.row');
@@ -870,7 +865,7 @@ function bind() {
     if (!it) return;
     const ref = findRef(it.dataset.ref);
     if (!ref || ref.type === 'tag' || (ref.type === 'branch' && ref.name === S.info?.branch)) return;
-    run('checkout', { ref: ref.name, kind: ref.type }, { label: `Checkout ${ref.name}` });
+    run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 로 전환` });
   });
   $('#sb-body').addEventListener('contextmenu', (e) => {
     const it = e.target.closest('[data-ref]');
@@ -905,15 +900,15 @@ function bind() {
   $('#tb-branch').onclick = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     const locals = S.refs.filter((x) => x.type === 'branch');
-    showMenu([{ head: 'Checkout' }, ...locals.map((b) => ({ label: (b.name === S.info?.branch ? '✓ ' : '   ') + b.name, run: () => b.name !== S.info?.branch && run('checkout', { ref: b.name, kind: 'branch' }, { label: `Checkout ${b.name}` }) })), '-', { label: '새 브랜치…', run: () => newBranch('HEAD') }], r.left, r.bottom + 4);
+    showMenu([{ head: '브랜치 전환 (checkout)' }, ...locals.map((b) => ({ label: (b.name === S.info?.branch ? '✓ ' : '   ') + b.name, run: () => b.name !== S.info?.branch && run('checkout', { ref: b.name, kind: 'branch' }, { label: `${b.name} 로 전환` }) })), '-', { label: '새 브랜치 만들기…', run: () => newBranch('HEAD') }], r.left, r.bottom + 4);
   };
 
   document.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () => ACT[b.dataset.act]()));
   $('#banner').addEventListener('click', (e) => {
     const b = e.target.closest('[data-banner]');
     if (!b) return;
-    if (b.dataset.banner === 'abort') confirmRun(`${S.meta.op} abort`, '진행 중인 작업을 취소합니다', 'abort', { op: S.meta.op }, 'Abort');
-    else run('cont', { op: S.meta.op }, { label: 'Continue' });
+    if (b.dataset.banner === 'abort') confirmRun('작업 중단', `진행 중인 ${S.meta.op} 을 취소하고 시작 전 상태로 되돌립니다.`, 'abort', { op: S.meta.op }, '중단');
+    else run('cont', { op: S.meta.op }, { label: '계속' });
   });
 
   $('#search').addEventListener('input', (e) => { S.search = e.target.value.trim(); S.matchPos = -1; computeMatches(); renderRows(true); });

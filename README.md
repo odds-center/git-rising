@@ -1,42 +1,79 @@
-# gittree
+# Git Rising
 
-GitKraken 대신 쓰려고 만든 가벼운 git 그래프 뷰어. Electron 이라 macOS / Windows 둘 다 됩니다.
+<img src="build/icon.png" width="96" align="right">
 
-![](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-informational)
+GitKraken 대신 쓰려고 만든 **가볍고 컴팩트한 git 그래프 뷰어**입니다. Electron 이라 macOS / Windows 둘 다 됩니다.
+화면의 버튼·메뉴는 전부 한국어이고, 마우스를 올리면 무엇을 하는지와 실제로 실행되는 git 명령이 나옵니다.
 
-## 기능
+## 설치
 
-- 저장소 탭 (여러 repo 동시에 열기, 최근 목록)
-- 커밋 그래프 — BRANCH/TAG · GRAPH · MESSAGE · AUTHOR · DATE · SHA, 무한 스크롤
-- 사이드바 — LOCAL / REMOTE(폴더 트리) / TAGS / WORKTREES / STASHES, 필터(⌘⌥F), ahead/behind 표시
-- 커밋 상세 — 메시지, 작성자, parent 이동, 변경 파일(Path/Tree), 파일 클릭 시 diff
-- 작업 중 변경(WIP) 행 — staged / unstaged 파일과 diff
-- 우클릭 메뉴 — Fast-forward / Merge / Rebase, Checkout, Create branch, Cherry pick, Reset(soft/mixed/hard), Revert, Delete branch(로컬/원격), Copy branch name / sha / 원격 링크, Create tag / annotated tag
-- 툴바 — Fetch, Pull, Push(업스트림 없으면 `-u origin`), Branch, Stash, Pop, Terminal, Finder/Explorer
-- merge/rebase/cherry-pick 진행 중이면 상단 배너에서 Continue / Abort
-- 터미널 등에서 repo 가 바뀌면 자동 새로고침
-- 커밋 검색(⌘F, Enter/Shift+Enter 로 이동), ↑/↓ 또는 j/k 로 커밋 이동, 사이드바 브랜치 더블클릭 = checkout
-
-## 실행
+### macOS — 내 응용 프로그램에 바로 설치
 
 ```bash
 npm install
-npm start                 # 또는: npm start -- /path/to/repo
+npm run install:mac      # 빌드 후 /Applications/Git Rising.app 으로 복사
 ```
 
-## 설치 파일 빌드
+서명 안 된 앱이라, 처음 열 때 막히면 Finder 에서 우클릭 → 열기.
+
+### 설치 파일 만들기
 
 ```bash
-npm run dist:mac          # dist/*.dmg
-npm run dist:win          # dist/*.exe (Windows 에서 빌드 권장)
+npm run dist:mac         # dist/*.dmg
+npm run dist:win         # dist/*.exe  (Windows 에서 빌드 권장)
 ```
 
-서명 안 된 빌드라 macOS 에서 처음 열 때는 우클릭 → 열기.
+### 개발 모드로 실행
+
+```bash
+npm start                # 또는: npm start -- /path/to/repo
+```
+
+## 화면 구성
+
+| 위치 | 내용 |
+| --- | --- |
+| 맨 위 탭 | 여러 저장소를 탭으로 열어둠. `+` 로 폴더 선택 / 최근 목록 |
+| 툴바 | 저장소·브랜치 전환, 가져오기(fetch) · 풀 · 푸시 · 브랜치 · 스태시 · 꺼내기(pop) · 터미널 · 폴더 |
+| 왼쪽 | 로컬 브랜치 / 원격 브랜치(폴더 트리) / 태그 / 워크트리 / 스태시. ↑↓ 는 원격보다 앞선·뒤처진 커밋 수 |
+| 가운데 | 브랜치/태그 · 그래프 · 커밋 메시지 · 작성자 · 날짜 · SHA. 맨 위 `// WIP` 줄은 아직 커밋 안 한 변경 |
+| 오른쪽 | 선택한 커밋의 메시지·작성자·부모 커밋·변경 파일. 파일을 누르면 diff |
+
+## 우클릭 메뉴 (커밋 / 브랜치)
+
+| 메뉴 | 하는 일 | git |
+| --- | --- | --- |
+| 빨리감기 | 현재 브랜치를 그 브랜치 위치로 앞당김 (갈라졌으면 실패 → 안전) | `merge --ff-only` |
+| 머지 | 그 브랜치를 현재 브랜치에 합치는 커밋 생성 | `merge` |
+| 리베이스 | 현재 브랜치 커밋들을 그 브랜치 끝으로 옮김 (SHA 바뀜) | `rebase` |
+| ~로 전환 | 그 브랜치로 checkout. 원격 브랜치면 로컬 브랜치를 만들어 추적 | `checkout` |
+| 이 커밋으로 이동 | 브랜치 없이 그 커밋 상태로 (detached) | `checkout` |
+| 여기서 새 브랜치 | 그 커밋에서 브랜치 생성 | `branch` |
+| 체리픽 | 그 커밋 변경만 현재 브랜치에 새 커밋으로 | `cherry-pick` |
+| 되돌리기(reset) | Soft: 변경을 스테이징에 남김 / Mixed: 작업 폴더에 남김 / Hard: 다 버림 | `reset` |
+| 이 커밋 취소하는 커밋 | 기록은 두고 반대 변경 커밋 생성 (푸시한 커밋에 안전) | `revert` |
+| 브랜치 삭제 | 로컬 삭제(`-d`, 강제 `-D`) / 원격 삭제 | `branch -d`, `push --delete` |
+| 복사 | 브랜치 이름, SHA, GitHub 브랜치·커밋 링크 | |
+| 태그 달기 | 가벼운 태그 / 설명 있는 태그(릴리즈용) | `tag`, `tag -a` |
+
+머지·리베이스·리셋·되돌리기·체리픽·삭제는 실행 전에 확인 창이 뜹니다.
+머지/리베이스 중 충돌이 나면 상단에 노란 배너가 뜨고, 거기서 **계속 / 중단** 할 수 있어요.
+
+## 단축키
+
+| 키 | 동작 |
+| --- | --- |
+| `⌘F` | 커밋 검색 (Enter 다음, Shift+Enter 이전) |
+| `⌘⌥F` | 브랜치 필터 |
+| `↑ ↓` / `j k` | 커밋 이동 |
+| `⌘R` | 새로고침 (터미널에서 바뀌면 자동으로도 갱신) |
+| `Esc` | diff / 메뉴 닫기 |
+| 브랜치 더블클릭 | 그 브랜치로 전환 |
 
 ## 구조
 
-- `src/main.js` — Electron main. `127.0.0.1` 임의 포트로 로컬 서버를 띄우고 창을 엶
-- `src/server.js` — `git` CLI 를 호출하는 작은 HTTP API (의존성 없음)
-- `public/` — UI (바닐라 JS + canvas 그래프)
+- `src/main.js` — Electron 메인 프로세스. `127.0.0.1` 임의 포트로 로컬 서버를 띄우고 창을 엶
+- `src/server.js` — 시스템 `git` 을 호출하는 작은 HTTP API (외부 의존성 없음)
+- `public/` — 화면 (바닐라 JS + canvas 그래프)
 
-시스템에 설치된 `git` 을 그대로 사용하므로 인증(ssh, credential helper)도 평소 설정 그대로 동작합니다.
+시스템에 설치된 `git` 을 그대로 쓰기 때문에 인증(ssh 키, credential helper)도 평소 설정 그대로 동작합니다.

@@ -1,8 +1,8 @@
 {
-  "name": "gittree",
-  "productName": "gittree",
+  "name": "git-rising",
+  "productName": "Git Rising",
   "version": "0.1.0",
-  "description": "GitKraken 스타일의 가벼운 git 그래프 뷰어",
+  "description": "가볍고 컴팩트한 git 그래프 뷰어 (macOS / Windows)",
   "type": "module",
   "main": "src/main.js",
   "private": true,
@@ -10,11 +10,12 @@
     "start": "electron .",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "dist": "electron-builder --mac --win"
+    "dist": "electron-builder --mac --win",
+    "install:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --arm64 && rm -rf '/Applications/Git Rising.app' && cp -R 'dist/mac-arm64/Git Rising.app' /Applications/"
   },
   "build": {
-    "appId": "local.gittree",
-    "productName": "gittree",
+    "appId": "com.oddscenter.gitrising",
+    "productName": "Git Rising",
     "files": [
       "src/**",
       "public/**",
@@ -27,6 +28,12 @@
           "arch": [
             "arm64",
             "x64"
+          ]
+        },
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
           ]
         }
       ],
