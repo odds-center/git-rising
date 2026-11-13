@@ -251,6 +251,15 @@ class Layout {
 }
 
 // ================================================================ data
+// Commits are paged: a small first page, more only as you scroll (or when jumping to a commit).
+const PAGE_FIRST = 200, PAGE_MORE = 300, PAGE_SEEK = 1500;
+// On refresh, re-read only as far as the user is currently looking — not everything ever loaded.
+function keepLimit() {
+  const sc = $('#graph-scroll');
+  const seen = Math.ceil((sc.scrollTop + sc.clientHeight) / ROW) + 120;
+  const sel = S.selected && S.index.has(S.selected) ? S.index.get(S.selected) + 60 : 0;
+  return Math.min(S.commits.length || PAGE_FIRST, Math.max(PAGE_FIRST, seen, sel));
+}
 const logParams = () => ({ order: P.order, ...(P.showRemotes ? {} : { remotes: '0' }), ...(S.solo ? { refs: S.solo } : {}) });
 const viewLen = () => S.commits.length + S.off;
 const rowAt = (v) => (v < S.off ? WIP_ROW : S.commits[v - S.off]);
@@ -291,7 +300,7 @@ async function loadRepo(repo, { keep = false, open = false, manual = false } = {
   if (switching) showOverlay(repo);
   if (manual) $('[data-act=reload]')?.classList.add('busy');
   try {
-    const limit = keep ? Math.min(5000, Math.max(600, S.commits.length)) : 600;
+    const limit = keep ? keepLimit() : PAGE_FIRST;
     if (switching) S.solo = null;
     const snap = await api('snapshot', { repo, limit, open: open ? 1 : '', ...logParams() });
     if (S.repo !== repo) return;
@@ -337,13 +346,13 @@ function relayout() {
   renderStatusbar();
 }
 
-async function loadMore() {
+async function loadMore(size = PAGE_MORE) {
   if (!S.hasMore || S.loadingMore) return;
   S.loadingMore = true;
   setLoading('더 불러오는 중…'); busy(true);
   try {
     const repo = S.repo;
-    const log = await api('log', { repo, skip: S.commits.length, limit: 2000, ...logParams() });
+    const log = await api('log', { repo, skip: S.commits.length, limit: size, ...logParams() });
     if (repo !== S.repo) return;
     const base = S.commits.length;
     S.commits.push(...log.commits);
@@ -355,7 +364,7 @@ async function loadMore() {
   finally { S.loadingMore = false; setLoading(''); busy(false); }
 }
 async function ensureLoaded(sha) {
-  for (let i = 0; i < 40 && vIndex(sha) < 0 && S.hasMore; i++) await loadMore();
+  for (let i = 0; i < 40 && vIndex(sha) < 0 && S.hasMore; i++) await loadMore(PAGE_SEEK); // jumping to a far commit: bigger steps
   return vIndex(sha) >= 0;
 }
 
@@ -490,11 +499,11 @@ function paint() {
   for (const el of pool) if (el._v < first || el._v > last) { el.style.display = 'none'; el._v = -1; }
   let lm = $('#rows .load-more');
   if (S.hasMore) {
-    if (!lm) { lm = document.createElement('div'); lm.className = 'load-more'; lm.textContent = '스크롤하면 더 불러옵니다'; $('#rows').append(lm); }
+    if (!lm) { lm = document.createElement('div'); lm.className = 'load-more'; lm.textContent = '이전 커밋 불러오는 중…'; $('#rows').append(lm); }
     lm.style.top = n * ROW + 'px';
   } else lm?.remove();
   drawGraph(first, last);
-  if (S.hasMore && last >= n - 40) loadMore();
+  if (S.hasMore && last >= n - 30) loadMore();
 }
 
 let canvasSize = '';
@@ -1140,6 +1149,7 @@ function renderStatusbar() {
   live.classList.toggle('on', S.live);
   $('#sb-live-tx').textContent = S.live ? '실시간' : document.hidden ? '일시정지' : '연결 중';
   $('#sb-path').textContent = S.info ? tilde(S.info.path) : '';
+  $('#sb-count').title = S.hasMore ? '스크롤하면 이전 커밋을 더 불러옵니다' : '모든 커밋을 불러왔어요';
   $('#sb-count').innerHTML = (S.solo ? `<button class="badge" id="solo-chip" title="클릭하면 필터 해제">${icon('branch')} ${esc(S.solo)} 만 보기 ✕</button> ` : '') + (S.commits.length ? `커밋 ${S.commits.length.toLocaleString()}${S.hasMore ? '+' : ''}` : '');
   $('#solo-chip')?.addEventListener('click', () => setSolo(null));
 }
@@ -2254,7 +2264,7 @@ function setSolo(name) {
   $('#graph-scroll').scrollTop = 0;
   const repo = S.repo;
   setLoading('불러오는 중…');
-  api('log', { repo, limit: 600, ...logParams() }).then((log) => {
+  api('log', { repo, limit: PAGE_FIRST, ...logParams() }).then((log) => {
     if (repo !== S.repo) return;
     S.commits = log.commits; S.hasMore = log.hasMore;
     rebuild(); renderDetail(); renderStatusbar();

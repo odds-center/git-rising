@@ -272,7 +272,7 @@ async function apiRepo(q) {
 async function apiLog(q) {
   const repo = await resolveRepo(q.repo);
   const skip = Math.max(0, parseInt(q.skip) || 0);
-  const limit = Math.min(10000, Math.max(1, parseInt(q.limit) || 600));
+  const limit = Math.min(5000, Math.max(1, parseInt(q.limit) || 200));
   const order = q.order === 'date' ? '--date-order' : '--topo-order';
   let revs = ['--branches', ...(q.remotes === '0' ? [] : ['--remotes']), '--tags'];
   if (await hasHead(repo)) revs.push('HEAD');
@@ -1311,6 +1311,8 @@ async function statusHash(repo) {
   return sha1(await git(repo, ['status', '--porcelain=v1', '-z', '--untracked-files=normal', '--ignore-submodules=dirty']));
 }
 
+// build output / caches: never part of what git status reports, and they change constantly
+const NOISY_DIRS = /(^|\/)(\.git|node_modules|\.next|\.nuxt|\.turbo|\.cache|\.parcel-cache|\.vite|\.svelte-kit|dist|build|out|target|coverage|\.venv|venv|__pycache__|\.gradle|\.idea|DerivedData|Pods|\.dart_tool|tmp|logs)(\/|$)|\.(log|tmp|swp|lock)$|~$/;
 const watchers = new Map();
 async function createWatcher(repo) {
   const gitDir = path.resolve(repo, (await git(repo, ['rev-parse', '--git-dir'])).trim());
@@ -1327,11 +1329,15 @@ async function createWatcher(repo) {
       const ev = {};
       if (want.refs) { const h = await refsHash(repo); if (h !== w.refs) (w.refs = h), (ev.refs = true); }
       if (want.status) {
-        const wait = 1000 - (Date.now() - (w.lastStatus || 0));
+        // Back off while file churn doesn't change `git status` (a dev server writing ignored files):
+        // 1s → 2s → 4s … up to 15s between runs; any real change resets it.
+        const gap = w.statusGap || 1000;
+        const wait = gap - (Date.now() - (w.lastStatus || 0));
         if (wait > 0 && !want.refs) { w.want.status = true; w.busy = false; w.timer = setTimeout(check, wait); return; }
         w.lastStatus = Date.now();
         const h = await statusHash(repo);
-        if (h !== w.status) (w.status = h), (ev.status = true);
+        if (h !== w.status) { w.status = h; ev.status = true; w.statusGap = 1000; }
+        else w.statusGap = Math.min(15000, gap * 2);
       }
       if (ev.refs || ev.status) emit(ev);
     } catch {}
@@ -1351,7 +1357,7 @@ async function createWatcher(repo) {
   };
   const onTree = (_ev, f) => {
     f = String(f || '').replace(/\\/g, '/');
-    if (/(^|\/)(\.git|node_modules)(\/|$)/.test(f)) return;
+    if (NOISY_DIRS.test(f)) return;
     fire('status');
   };
   const watch = (dir, cb) => {
