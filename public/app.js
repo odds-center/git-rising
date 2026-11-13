@@ -110,6 +110,7 @@ const ICONS = {
   'check-circle': '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  tree: '<path d="M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z"/><path d="M7 16v6"/><path d="M13 19v3"/><path d="M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/>',
 };
@@ -330,7 +331,15 @@ async function loadRepo(repo, { keep = false, open = false, manual = false } = {
     if (S.selected) selectCommit(S.selected, { scroll: false, force: true }); else renderDetail();
     $('#empty').hidden = true;
   } catch (e) {
-    if (S.repo === repo) showEmpty(e.message);
+    if (S.repo === repo) {
+      if (/Not a git repository/.test(e.message) && S.tabs.includes(repo)) {
+        S.tabs = S.tabs.filter((t) => t !== repo);
+        S.repo = null; saveTabs(); renderTabs();
+        toast(`'${repo.split(/[\\/]/).pop()}' 폴더가 없어져서 탭을 닫았어요`);
+        if (S.tabs.length) return loadRepo(S.tabs[0]);
+        showEmpty();
+      } else showEmpty(e.message);
+    }
   } finally {
     setLoading(''); busy(false);
     if (S.repo === repo || !S.repo) hideOverlay();
@@ -1151,7 +1160,7 @@ function renderSidebar() {
   const leaf = (r, label, d) => {
     const isHead = r.type === 'branch' && r.name === head;
     const wt = r.type === 'branch' && !isHead ? otherWorktree(r.name) : null;
-    const ic = r.type === 'tag' ? 'tag' : isHead ? 'check' : wt ? 'layers' : 'branch';
+    const ic = r.type === 'tag' ? 'tag' : isHead ? 'check' : wt ? 'tree' : 'branch';
     return `<div class="it${isHead ? ' head' : ''}${wt ? ' in-wt' : ''}${S.selected === r.sha ? ' selected' : ''}" style="${pad(d)}" data-ref="${esc(r.type)}:${esc(r.name)}" title="${esc(r.name)}${wt ? '\n다른 폴더에서 열려 있어요: ' + esc(tilde(wt.path)) : ''}">${icon(ic)}<span class="nm">${escN(label)}</span>${wt ? `<span class="wt-tag">${esc(wt.path.split(/[\\/]/).pop())}</span>` : ''}${r.type === 'branch' ? trackHTML(r.track) : ''}</div>`;
   };
   const tree = (node, d, kp) => {
@@ -1182,13 +1191,13 @@ function renderSidebar() {
   h += sec('remote', '원격 브랜치', 'cloud', remote.length, rb);
   h += sec('tags', '태그', 'tag', tags.length, tags.filter(match).map((r) => leaf(r, r.name, 0.4)).join(''));
   const wts = S.meta.worktrees || [];
-  h += sec('wt', '워크트리', 'layers', wts.length, wts.map((w) => `<div class="it" style="${pad(0.4)}" data-wt="${esc(w.path)}" title="${esc(w.path)}\n클릭: 이 워크트리를 탭으로 열기">${icon('layers')}<span class="nm">${esc(w.branch || w.path.split(/[\\/]/).pop())}</span><span class="ab">${esc(w.path.split(/[\\/]/).pop())}</span></div>`).join(''));
+  h += sec('wt', '워크트리', 'tree', wts.length, wts.map((w) => `<div class="it" style="${pad(0.4)}" data-wt="${esc(w.path)}" title="${esc(w.path)}\n클릭: 이 워크트리를 탭으로 열기">${icon('tree')}<span class="nm">${esc(w.branch || w.path.split(/[\\/]/).pop())}</span><span class="ab">${esc(w.path.split(/[\\/]/).pop())}</span></div>`).join(''));
   h += sec('stash', '스태시', 'archive', S.stashes, (S.stashList || []).map((st) => `<div class="it${S.detail?.stash?.index === st.index ? ' selected' : ''}" style="${pad(0.4)}" data-stash="${st.index}" title="${esc(st.message)}\n눌러서 내용 미리보기">${icon('archive')}<span class="nm">${escN(st.title || '(메시지 없음)')}</span><span class="ab">${relDate(st.time)}</span></div>`).join(''));
   $('#sb-body').innerHTML = h;
 
   // header
   $('#sb-repo-name').textContent = S.info?.name || '—';
-  $('#sb-repo-path').innerHTML = S.info ? (S.info.worktree ? `<span class="wt-chip" title="${esc(tilde(S.info.main || ''))} 의 워크트리">${icon('layers')}워크트리</span>` : '') + esc(tilde(S.info.path)) : '';
+  $('#sb-repo-path').innerHTML = S.info ? (S.info.worktree ? `<span class="wt-chip" title="${esc(tilde(S.info.main || ''))} 의 워크트리">${icon('tree')}워크트리</span>` : '') + esc(tilde(S.info.path)) : '';
   if (S.info && $('#sb-repo .repo-ic')?.dataset.repo !== S.info.path + P.repoLogos) { $('#sb-repo .repo-ic').outerHTML = logoHTML(S.info.path); $('#sb-repo .repo-ic').dataset.repo = S.info.path + P.repoLogos; }
   const cur = local.find((r) => r.name === head);
   $('#sb-branch').innerHTML = `${icon('branch')}<span class="nm">${escN(headLabel())}</span>${cur ? trackHTML(cur.track) : ''}${icon('chev-down')}`;
@@ -1204,8 +1213,9 @@ const findRef = (key) => { const i = key.indexOf(':'); const t = key.slice(0, i)
 
 // ================================================================ tabs / bars
 function saveTabs() { LS.set('tabs', S.tabs); LS.set('active', S.repo); }
+function isWorktreePath(p) { return (S.repos?.repos || []).some((r) => (r.worktrees || []).some((w) => w.path === p)) || (p === S.repo && !!S.info?.worktree); }
 function renderTabs() {
-  $('#tab-list').innerHTML = S.tabs.map((t) => `<div class="tab${t === S.repo ? ' active' : ''}" data-tab="${esc(t)}" title="${esc(tilde(t))}">${logoHTML(t, 'repo-ic tab-ic')}<span>${escN(t.split(/[\\/]/).pop())}</span><span class="x" data-close="${esc(t)}">${icon('x')}</span></div>`).join('');
+  $('#tab-list').innerHTML = S.tabs.map((t) => `<div class="tab${t === S.repo ? ' active' : ''}" data-tab="${esc(t)}" title="${esc(tilde(t))}">${logoHTML(t, 'repo-ic tab-ic')}${isWorktreePath(t) ? `<span class="tab-wt" title="워크트리">${icon('tree')}</span>` : ''}<span>${escN(t.split(/[\\/]/).pop())}</span><span class="x" data-close="${esc(t)}">${icon('x')}</span></div>`).join('');
   document.title = S.info ? `${S.info.name} — Git Rising` : 'Git Rising';
 }
 function renderActions() {
@@ -1333,7 +1343,12 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
   } else if (action === 'checkout' && args.kind === 'branch') {
     const wt = otherWorktree(args.ref);
     const sha = S.refs.find((x) => x.type === 'branch' && x.name === args.ref)?.sha;
-    if (wt && sha) { detachedFor = { local: args.ref, wt, remote: args.ref, sha }; args = { ref: sha, kind: 'commit' }; }
+    if (wt && !force) { // the branch is open in another worktree → go there (a tab), don't ask
+      const folder = wt.path.split(/[\\/]/).pop(), here = S.repo, name = args.ref;
+      await openTab(wt.path);
+      toast(`${name} 는 워크트리 '${folder}' 에서 열려 있어서 그 탭을 열었어요`, 'ok', sha ? [{ label: '원래 탭에서 보기만', run: async () => { await loadRepo(here); saveTabs(); renderTabs(); run('checkout', { ref: sha, kind: 'commit' }, { label: `${name} 보기`, force: true }); } }] : []);
+      return false;
+    }
   }
   const btn = document.querySelector(`[data-act="${action}"]`);
   btn?.classList.add('busy');
@@ -1362,6 +1377,7 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
     const wtm = e.message.match(/'([^']+)' is already (?:used by|checked out at) worktree at '([^']+)'/) || e.message.match(/'([^']+)' is already checked out at '([^']+)'/);
     if (wtm && !force) {
       const sha = S.refs.find((x) => x.type === 'branch' && x.name === wtm[1])?.sha;
+      if (wtm[2]) { await openTab(wtm[2]); toast(`${wtm[1]} 는 워크트리 '${wtm[2].split(/[\\/]/).pop()}' 에서 열려 있어서 그 탭을 열었어요`, 'ok'); return false; }
       if (sha) { await loadRepo(S.repo, { keep: true }); return run('checkout', { ref: sha, kind: 'commit' }, { label, force: true }); }
     }
     const hint = /repository not found/i.test(e.message) ? '\n\n→ 원격 주소가 바뀌었거나, 이 저장소에 권한이 없는 계정/키로 접속했을 수 있어요.' : '';
@@ -1535,7 +1551,7 @@ function branchItems(ref) {
   if (items.length) items.push('-');
   if (!isCur) {
     const wt = ref.type === 'branch' ? otherWorktree(name) : null;
-    if (wt) items.push({ label: `이 브랜치가 열려 있는 폴더 열기 (${wt.path.split(/[\\/]/).pop()})`, icon: 'folder', tip: tilde(wt.path), run: () => openTab(wt.path) });
+    if (wt) items.push({ label: `워크트리 '${wt.path.split(/[\\/]/).pop()}' 탭으로 열기`, icon: 'tree', tip: tilde(wt.path), run: () => openTab(wt.path) });
     if (ref.type === 'branch') items.push({ label: `${name} 로 전환`, hint: 'checkout', run: () => run('checkout', { ref: name, kind: 'branch' }, { label: `${name} 전환` }) });
     else if (ref.type === 'remote') items.push({ label: `${name} 위치로 전환`, hint: 'checkout', tip: '같은 이름의 로컬 브랜치가 없으면 만들고, 뒤처져 있으면 원격 위치까지 빨리감기합니다. 갈라져 있으면 먼저 물어봐요.', run: () => run('checkout', { ref: name, kind: 'remote' }, { label: `${name} 전환` }) });
     else items.push({ label: `태그 ${name} 로 이동 (detached)`, hint: 'checkout', run: () => run('checkout', { ref: ref.sha, kind: 'commit' }, { label: '이동' }) });
@@ -1654,7 +1670,7 @@ function hl(text, q) {
   return i === -1 ? esc(text) : esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
 }
 async function loadRepos(refresh) {
-  try { S.repos = await api('repos', refresh ? { refresh: 1 } : {}); if (S.palette?.mode === 'repos' || S.palette?.mode === 'all') renderPalette(); }
+  try { S.repos = await api('repos', refresh ? { refresh: 1 } : {}); if (S.palette && S.palette.mode !== 'branches') renderPalette(); }
   catch (e) { toast(e.message, 'err'); }
 }
 function actionItems() {
@@ -1697,7 +1713,7 @@ function openPalette(mode = 'all', q = '') {
   $('#palette-layer').hidden = false;
   const inp = $('#pl-input');
   inp.value = q;
-  inp.placeholder = mode === 'repos' ? '저장소 이름이나 경로로 찾기…' : mode === 'branches' ? '전환할 브랜치…' : '저장소 · 브랜치 · 명령 찾기…';
+  inp.placeholder = mode === 'repos' ? '저장소 이름이나 경로로 찾기…' : mode === 'branches' ? '전환할 브랜치…' : mode === 'family' ? '이 저장소의 워크트리 찾기…' : '저장소 · 브랜치 · 명령 찾기…';
   inp.focus();
   if (!S.repos) loadRepos(false);
   renderPalette();
@@ -1708,17 +1724,29 @@ function renderPalette() {
   const q = $('#pl-input').value.trim();
   const groups = [];
   const open = new Set(S.tabs);
-  if (P.mode !== 'branches') {
+  if (P.mode === 'family') {
+    // this repository and its worktrees only (first entry of `git worktree list` is the original repository)
+    const wts = S.meta.worktrees || [];
+    const fam = wts.map((w, i) => ({ w, i, s: Math.max(fuzzy(q, w.path.split(/[\\/]/).pop()) * 2, fuzzy(q, w.branch || ''), fuzzy(q, w.path)) })).filter((x) => !q || x.s > 0);
+    if (q) fam.sort((a, b) => b.s - a.s);
+    groups.push({ title: `${nfc((wts[0]?.path || '').split(/[\\/]/).pop())} · 저장소와 워크트리 ${Math.max(0, wts.length - 1)}개`, items: fam.map(({ w, i }) => ({
+      icon: i === 0 ? 'folder' : 'tree', html: hl(w.path.split(/[\\/]/).pop(), q), sub: tilde(w.path),
+      right: `${i === 0 ? '<span class="badge">원래 저장소</span>' : '<span class="badge wt">워크트리</span>'}${w.branch ? `<span class="br">${esc(w.branch)}</span>` : '<span class="br">브랜치 없음</span>'}${w.path === S.repo ? '<span class="open">● 지금 보는 중</span>' : open.has(w.path) ? '<span class="open">● 열림</span>' : ''}`,
+      run: () => (w.path === S.repo ? null : openTab(w.path)),
+    })) });
+    groups.push({ title: '', small: true, items: [{ icon: 'search', html: '다른 저장소 찾기…', right: '<span>⌘O</span>', run: () => openPalette('repos') }] });
+  }
+  if (P.mode !== 'branches' && P.mode !== 'family') {
     const repos = (S.repos?.repos || []).map((r) => ({ r, s: Math.max(fuzzy(q, r.name) * 2, fuzzy(q, r.path), ...(r.worktrees || []).map((w) => Math.max(fuzzy(q, w.name), fuzzy(q, w.branch || '')))) })).filter((x) => !q || x.s > 0);
     if (q) repos.sort((a, b) => b.s - a.s);
     const lim = P.mode === 'repos' ? 80 : q ? 8 : 5;
     groups.push({ title: P.mode === 'repos' ? `저장소 ${S.repos ? S.repos.repos.length + '개' : ''} · 최근 작업 순` : '저장소', items: repos.slice(0, lim).map(({ r }) => ({
       icon: 'folder', logo: r.path, html: hl(r.name, q), sub: tilde(r.path),
-      right: `${r.worktrees?.length ? `<span class="badge" title="${esc(r.worktrees.map((w) => w.name + ' · ' + w.branch).join('\n'))}">워크트리 ${r.worktrees.length}</span>` : ''}${r.branch ? `<span class="br">${esc(r.branch)}</span>` : ''}${open.has(r.path) ? '<span class="open">● 열림</span>' : ''}<span>${r.activity ? relDate(r.activity / 1000) : ''}</span>`,
+      right: `${r.worktrees?.length ? `<span class="badge wt" title="${esc(r.worktrees.map((w) => w.name + ' · ' + w.branch).join('\n'))}">${icon('tree')}${r.worktrees.length}</span>` : ''}${r.branch ? `<span class="br">${esc(r.branch)}</span>` : ''}${open.has(r.path) ? '<span class="open">● 열림</span>' : ''}<span>${r.activity ? relDate(r.activity / 1000) : ''}</span>`,
       run: () => openTab(r.path),
     })) });
   }
-  if (P.mode !== 'repos' && S.repo) {
+  if (P.mode !== 'repos' && P.mode !== 'family' && S.repo) {
     const bs = S.refs.filter((r) => r.type === 'branch' || r.type === 'remote').map((r) => ({ r, s: fuzzy(q, r.name) })).filter((x) => !q || x.s > 0);
     if (q) bs.sort((a, b) => b.s - a.s);
     groups.push({ title: '브랜치로 전환', small: true, items: bs.slice(0, P.mode === 'branches' ? 100 : q ? 8 : 0).map(({ r }) => ({
@@ -1734,13 +1762,13 @@ function renderPalette() {
   P.items = groups.flatMap((g) => g.items);
   P.sel = Math.min(P.sel, Math.max(0, P.items.length - 1));
   let k = 0;
-  const html = groups.filter((g) => g.items.length).map((g) => `<div class="pl-g">${esc(g.title)}</div>` + g.items.map((it) => {
+  const html = groups.filter((g) => g.items.length).map((g) => (g.title ? `<div class="pl-g">${esc(g.title)}</div>` : '<div class="msep" style="margin:6px 4px"></div>') + g.items.map((it) => {
     const i = k++;
     return `<div class="pl-it${g.small ? ' sm' : ''}${i === P.sel ? ' on' : ''}" data-pi="${i}">${it.logo ? logoHTML(it.logo, 'repo-ic pl-ic') : icon(it.icon)}<div class="tx"><span class="tt">${it.html}</span>${it.sub ? `<span class="ss">${esc(it.sub)}</span>` : ''}</div><div class="rt">${it.right || ''}</div></div>`;
   }).join('')).join('');
   $('#pl-list').innerHTML = html || `<div class="pl-empty">${S.repos ? '찾는 항목이 없어요' : '저장소를 찾는 중…'}</div>`;
   const R = S.repos;
-  $('#pl-foot').innerHTML = P.mode === 'branches' ? '' : `${R ? `<span>${R.config.scanRoots.map(tilde).join(', ')} · 깊이 ${R.config.maxDepth} · ${R.scanning ? '찾는 중…' : relDate(R.scannedAt / 1000) + ' 스캔'}</span>` : '<span>저장소 찾는 중…</span>'}<span class="grow"></span><button data-pf="rescan">다시 찾기</button><button data-pf="roots">검색 위치 변경</button><button data-pf="pick">폴더 직접 선택</button>`;
+  $('#pl-foot').innerHTML = P.mode === 'branches' || P.mode === 'family' ? '' : `${R ? `<span>${R.config.scanRoots.map(tilde).join(', ')} · 깊이 ${R.config.maxDepth} · ${R.scanning ? '찾는 중…' : relDate(R.scannedAt / 1000) + ' 스캔'}</span>` : '<span>저장소 찾는 중…</span>'}<span class="grow"></span><button data-pf="rescan">다시 찾기</button><button data-pf="roots">검색 위치 변경</button><button data-pf="pick">폴더 직접 선택</button>`;
 }
 function palMove(d) { const P = S.palette; if (!P?.items.length) return; P.sel = (P.sel + d + P.items.length) % P.items.length; $('#pl-list').querySelectorAll('.pl-it').forEach((el) => el.classList.toggle('on', +el.dataset.pi === P.sel)); $(`[data-pi="${P.sel}"]`)?.scrollIntoView({ block: 'nearest' }); }
 function palRun(i) { const it = S.palette?.items[i]; if (!it) return; closePalette(); it.run(); }
@@ -2138,7 +2166,7 @@ function bind() {
   });
   $('#sb-body').addEventListener('contextmenu', (e) => { const it = e.target.closest('[data-ref]'); if (!it) return; e.preventDefault(); const ref = findRef(it.dataset.ref); if (ref) showMenu(refMenu(ref), e.clientX, e.clientY); });
   $('#sb-filter').addEventListener('input', debounce(renderSidebar, 80));
-  $('#sb-repo').onclick = () => openPalette('repos');
+  $('#sb-repo').onclick = () => ((S.meta.worktrees || []).length > 1 ? openPalette('family') : openPalette('repos'));
   $('#sb-branch').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); branchChipMenu(r.left, r.bottom + 4); };
   // tabs: click to switch, middle-click to close, drag to reorder
   let tabDrag = null;

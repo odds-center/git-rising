@@ -668,3 +668,13 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
 :root[data-tone="soft"] .row.head { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 :root[data-tone="soft"] .pill.tag { background: var(--active); color: var(--text2); }
 :root[data-tone="soft"] #cnt-pull { background: #c9772e; } :root[data-tone="soft"] #cnt-push { background: #6474d8; }
+
+/* ---------- worktree mark (tree) ---------- */
+.tab-wt { display: inline-flex; color: #5fae7c; margin: 0 -2px 0 -1px; }
+.tab-wt svg { width: 12px; height: 12px; }
+.badge.wt { display: inline-flex; align-items: center; gap: 3px; color: #5fae7c; background: color-mix(in srgb, #5fae7c 15%, transparent); }
+.badge.wt svg { width: 10px; height: 10px; }
+.wt-chip { color: #5fae7c; background: color-mix(in srgb, #5fae7c 15%, transparent); }
+.it.in-wt svg, .it[data-wt] svg { color: #5fae7c; }
+.wt-tag { color: #5fae7c; background: color-mix(in srgb, #5fae7c 14%, transparent); }
+.pl-it > svg { flex: none; }
