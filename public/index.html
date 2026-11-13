@@ -8,76 +8,106 @@
 </head>
 <body>
 <div id="app">
-  <header id="tabs">
+  <header id="topbar">
     <div id="tab-list"></div>
-    <button id="tab-add" class="icon-btn" title="저장소 열기 (폴더 선택 / 최근 목록)">+</button>
+    <button id="tab-add" class="ib" title="저장소 열기 (⌘O)"></button>
+    <div class="grow drag"></div>
+    <nav id="actions">
+      <div class="grp">
+        <button class="tb" data-act="fetch" data-tip="원격의 최신 정보를 받아옵니다 (내 브랜치는 그대로)|git fetch --all --prune"><i data-i="refresh"></i><span>가져오기</span></button>
+        <button class="tb" data-act="pull" data-tip="원격의 변경을 현재 브랜치에 합칩니다|git pull"><i data-i="down"></i><span>풀</span></button>
+        <button class="tb" data-act="push" data-tip="현재 브랜치 커밋을 원격에 올립니다 (처음이면 -u origin)|git push"><i data-i="up"></i><span>푸시</span></button>
+      </div>
+      <div class="grp">
+        <button class="tb" data-act="newbranch" data-tip="현재 위치에서 새 브랜치|git checkout -b"><i data-i="branch"></i><span>브랜치</span></button>
+        <button class="tb" data-act="stash" data-tip="커밋 안 한 변경을 임시 보관|git stash push -u"><i data-i="archive"></i><span>스태시</span></button>
+        <button class="tb" data-act="pop" data-tip="보관한 변경을 다시 꺼내기|git stash pop"><i data-i="unarchive"></i><span>꺼내기</span></button>
+      </div>
+      <div class="grp">
+        <button class="tb icon-only" data-act="terminal" data-tip="내장 터미널 열기/닫기 (⌃`)|기본 셸 · 이 저장소 폴더에서 시작"><i data-i="terminal"></i></button>
+        <button class="tb icon-only" data-act="reveal" data-tip="Finder / 탐색기로 열기"><i data-i="folder"></i></button>
+      </div>
+    </nav>
+    <button id="cmdk" title="명령 팔레트"><i data-i="search"></i><span>검색 · 명령</span><kbd>⌘K</kbd></button>
   </header>
-
-  <div id="toolbar">
-    <button id="tb-repo" class="tb-select" title="저장소 바꾸기"><span class="tb-label">저장소</span><span id="tb-repo-name">—</span><span class="caret">▾</span></button>
-    <button id="tb-branch" class="tb-select" title="현재 브랜치 — 클릭해서 다른 브랜치로 전환"><span class="tb-label">브랜치</span><span id="tb-branch-name">—</span><span class="caret">▾</span></button>
-    <div class="tb-spacer"></div>
-    <button class="tb-btn" data-act="fetch" title="원격 저장소의 최신 정보를 받아옵니다. 내 브랜치는 바뀌지 않아요.&#10;git fetch --all --prune"><i>⟳</i>가져오기</button>
-    <button class="tb-btn" data-act="pull" title="원격의 변경을 현재 브랜치에 합칩니다.&#10;git pull"><i>↓</i>풀</button>
-    <button class="tb-btn" data-act="push" title="현재 브랜치의 커밋을 원격에 올립니다. 처음이면 origin 에 업스트림을 설정해요.&#10;git push (-u origin 브랜치)"><i>↑</i>푸시</button>
-    <button class="tb-btn" data-act="newbranch" title="현재 위치(HEAD)에서 새 브랜치를 만듭니다.&#10;git branch / git checkout -b"><i>⑂</i>브랜치</button>
-    <button class="tb-btn" data-act="stash" title="커밋 안 한 변경사항을 임시 보관하고 작업 폴더를 깨끗하게 만듭니다.&#10;git stash push -u"><i>⊻</i>스태시</button>
-    <button class="tb-btn" data-act="pop" title="가장 최근에 보관한 스태시를 다시 꺼내 적용합니다.&#10;git stash pop"><i>⊼</i>꺼내기</button>
-    <span class="tb-vsep"></span>
-    <button class="tb-btn" data-act="terminal" title="이 저장소 폴더에서 터미널을 엽니다"><i>&gt;_</i>터미널</button>
-    <button class="tb-btn" data-act="reveal" title="이 저장소 폴더를 Finder / 탐색기로 엽니다"><i>▤</i>폴더</button>
-    <span class="tb-vsep"></span>
-    <div id="search-wrap">
-      <input id="search" placeholder="커밋 검색 (⌘F)" spellcheck="false" title="메시지·작성자·SHA 로 검색. Enter 다음, Shift+Enter 이전">
-      <span id="search-count"></span>
-    </div>
-  </div>
 
   <div id="banner" hidden></div>
 
   <main id="main">
     <aside id="sidebar">
-      <div id="sb-head">
-        <input id="sb-filter" placeholder="브랜치 필터 (⌘⌥F)" spellcheck="false">
-        <span id="sb-viewing" title="불러온 커밋 수"><b id="sb-count">0</b> 커밋</span>
-      </div>
+      <button id="sb-repo" title="저장소 바꾸기 (⌘O)">
+        <span class="repo-ic"></span>
+        <span class="repo-tx"><b id="sb-repo-name">—</b><small id="sb-repo-path"></small></span>
+        <i data-i="chevrons"></i>
+      </button>
+      <button id="sb-branch" title="브랜치 전환 / 원격과 맞추기"></button>
+      <div class="sb-filter"><i data-i="filter"></i><input id="sb-filter" placeholder="브랜치 필터  ⌘⌥F" spellcheck="false"></div>
       <div id="sb-body"></div>
     </aside>
     <div class="resizer" data-target="sidebar"></div>
 
     <section id="center">
-      <div id="graph-header">
-        <div class="c-ref">브랜치 / 태그</div>
-        <div class="c-graph">그래프</div>
-        <div class="c-msg">커밋 메시지</div>
-        <div class="c-author">작성자</div>
-        <div class="c-date">날짜</div>
-        <div class="c-sha">SHA</div>
+      <div id="graph-header" title="경계를 드래그해서 너비 조절 · 더블클릭하면 기본값">
+        <div>브랜치 / 태그<span class="col-rz" data-b="0"></span></div>
+        <div>그래프<span class="col-rz" data-b="1"></span></div>
+        <div>커밋 메시지<span class="col-rz" data-b="2"></span></div>
+        <div>작성자<span class="col-rz" data-b="3"></span></div>
+        <div>날짜<span class="col-rz" data-b="4"></span></div>
+        <div>SHA</div>
       </div>
       <div id="graph-scroll" tabindex="0">
-        <div id="graph-inner">
-          <canvas id="graph-canvas"></canvas>
-          <div id="rows"></div>
-        </div>
+        <div id="graph-inner"><div id="rows"></div></div>
+      </div>
+      <canvas id="graph-canvas"></canvas>
+      <div id="findbar" hidden>
+        <i data-i="search"></i>
+        <input id="find" placeholder="메시지 · 작성자 · SHA (전체 히스토리)" spellcheck="false">
+        <span id="find-count"></span>
+        <button class="ib" id="find-prev" title="이전 (Shift+Enter)"><i data-i="chev-up"></i></button>
+        <button class="ib" id="find-next" title="다음 (Enter)"><i data-i="chev-down"></i></button>
+        <button class="ib" id="find-close" title="닫기 (Esc)"><i data-i="x"></i></button>
       </div>
       <div id="diff-view" hidden>
         <div id="diff-head">
-          <button id="diff-close" class="icon-btn" title="닫기 (Esc)">✕</button>
+          <button id="diff-close" class="ib" title="닫기 (Esc)"><i data-i="x"></i></button>
           <span id="diff-title"></span>
-          <span class="tb-spacer"></span>
-          <label class="chk" title="긴 줄을 화면 폭에 맞춰 줄바꿈"><input type="checkbox" id="diff-wrap"> 줄바꿈</label>
+          <span class="grow"></span>
+          <label class="chk"><input type="checkbox" id="diff-wrap"> 줄바꿈</label>
         </div>
         <div id="diff-body"></div>
       </div>
       <div id="empty" hidden></div>
+      <div id="term-panel" hidden>
+        <div class="term-rz" title="드래그해서 높이 조절"></div>
+        <div id="term-head"><div id="term-tabs" style="display:flex;gap:2px;overflow:auto"></div>
+          <button class="ib" id="term-add" title="새 터미널"><i data-i="plus"></i></button>
+          <span class="grow"></span>
+          <button class="ib" id="term-ext" title="외부 터미널 앱으로 열기"><i data-i="external"></i></button>
+          <button class="ib" id="term-hide" title="숨기기 (⌃`)"><i data-i="chev-down"></i></button>
+        </div>
+        <div id="term-body"></div>
+      </div>
     </section>
 
     <div class="resizer" data-target="detail"></div>
-    <aside id="detail"><div class="placeholder">커밋을 선택하세요</div></aside>
+    <aside id="detail"></aside>
   </main>
+
+  <footer id="statusbar">
+    <span id="sb-live" title="저장소 변경을 실시간으로 감시합니다. 창이 백그라운드면 멈춰서 CPU 를 쓰지 않아요."><span class="dot"></span><span id="sb-live-tx">대기</span></span>
+    <span id="sb-path" class="muted"></span>
+    <span class="grow"></span>
+    <span id="sb-loading" class="muted"></span>
+    <span id="sb-count" class="muted"></span>
+    <button id="sb-update" hidden></button>
+    <button id="sb-theme" class="ib" title="테마 전환"></button>
+    <button id="sb-settings" class="ib" title="설정 (SSH · 저장소 찾기 · 업데이트)"><i data-i="settings"></i></button>
+  </footer>
 </div>
 
+<div id="tip" hidden></div>
 <div id="menu-layer"></div>
+<div id="palette-layer" hidden><div id="palette"><div class="pl-in"><i data-i="search"></i><input id="pl-input" spellcheck="false"></div><div id="pl-list"></div><div id="pl-foot"></div></div></div>
 <div id="modal-layer" hidden></div>
 <div id="toasts"></div>
 <script src="/app.js"></script>

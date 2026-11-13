@@ -2,78 +2,84 @@
 
 <img src="build/icon.png" width="96" align="right">
 
-GitKraken 대신 쓰려고 만든 **가볍고 컴팩트한 git 그래프 뷰어**입니다. Electron 이라 macOS / Windows 둘 다 됩니다.
-화면의 버튼·메뉴는 전부 한국어이고, 마우스를 올리면 무엇을 하는지와 실제로 실행되는 git 명령이 나옵니다.
+가볍고 빠른 git 그래프 클라이언트. Electron 이라 **macOS / Windows** 둘 다 됩니다.
+화면은 전부 한국어이고, 버튼·메뉴에 마우스를 올리면 하는 일과 실제 git 명령이 나옵니다.
 
 ## 설치
 
-### macOS — 내 응용 프로그램에 바로 설치
+**릴리즈에서 받기** — [Releases](https://github.com/odds-center/gittree/releases) 에서 `.dmg`(mac) / `.exe`(Windows).
+서명 안 된 앱이라 맥에서 처음 열 때는 우클릭 → 열기. 이후에는 앱이 **스스로 업데이트**합니다.
+
+**소스에서 바로 설치 (macOS)**
 
 ```bash
 npm install
-npm run install:mac      # 빌드 후 /Applications/Git Rising.app 으로 복사
+npm run install:mac      # 빌드해서 /Applications/Git Rising.app 으로 복사
 ```
 
-서명 안 된 앱이라, 처음 열 때 막히면 Finder 에서 우클릭 → 열기.
+개발 모드: `npm start` (또는 `npm start -- /path/to/repo`)
 
-### 설치 파일 만들기
+## 기능
 
-```bash
-npm run dist:mac         # dist/*.dmg
-npm run dist:win         # dist/*.exe  (Windows 에서 빌드 권장)
-```
-
-### 개발 모드로 실행
-
-```bash
-npm start                # 또는: npm start -- /path/to/repo
-```
-
-## 화면 구성
-
-| 위치 | 내용 |
+| | |
 | --- | --- |
-| 맨 위 탭 | 여러 저장소를 탭으로 열어둠. `+` 로 폴더 선택 / 최근 목록 |
-| 툴바 | 저장소·브랜치 전환, 가져오기(fetch) · 풀 · 푸시 · 브랜치 · 스태시 · 꺼내기(pop) · 터미널 · 폴더 |
-| 왼쪽 | 로컬 브랜치 / 원격 브랜치(폴더 트리) / 태그 / 워크트리 / 스태시. ↑↓ 는 원격보다 앞선·뒤처진 커밋 수 |
-| 가운데 | 브랜치/태그 · 그래프 · 커밋 메시지 · 작성자 · 날짜 · SHA. 맨 위 `// WIP` 줄은 아직 커밋 안 한 변경 |
-| 오른쪽 | 선택한 커밋의 메시지·작성자·부모 커밋·변경 파일. 파일을 누르면 diff |
+| **저장소 자동 찾기** | 홈 폴더를 훑어 git 저장소를 찾아 최근 작업 순으로 보여줍니다 (`⌘O`). 워크트리는 원래 저장소 아래로 묶입니다. 검색 위치·깊이는 설정에서 변경 |
+| **명령 팔레트** | `⌘K` — 저장소 열기, 브랜치 전환, 모든 명령을 한 곳에서 검색 |
+| **커밋 그래프** | 브랜치/태그 · 그래프 · 메시지 · 작성자 · 날짜 · SHA. 헤더 경계를 드래그해 컬럼 너비 조절, 무한 스크롤 |
+| **우클릭 작업** | 빨리감기 · 머지 · 리베이스 · **리셋(soft/mixed/hard)** · 전환 · 새 브랜치 · 다른 브랜치를 여기로 옮기기 · 체리픽 · 되돌리기 · 삭제 · 태그 · 링크 복사 |
+| **원격과 똑같이 맞추기** | 현재 브랜치를 `origin/…` 과 완전히 같게 (`fetch` + `reset --hard @{u}`) |
+| **되돌리기** | 방금 한 작업을 토스트의 [되돌리기] 또는 `⌘Z` 로 취소 (리셋·머지·브랜치 이동/삭제·전환 등) |
+| **미리보기** | 이미지(이전/이후 비교) · PDF · 영상 · 오디오 · Word(docx) · 엑셀/CSV · Markdown. 그 밖의 형식은 [기본 앱으로 열기] |
+| **내장 터미널** | 기본 셸이 그래프 아래 패널에 뜹니다 (`` ⌃` ``). 탭 여러 개, 저장소별로 유지 |
+| **인증** | HTTPS / SSH 모두 지원. 암호가 필요하면 앱 안에 입력 창, 맥은 키체인에 저장해 다음부터 자동. 원격 추가·주소 변경·HTTPS↔SSH 전환, URL 로 복제(clone) |
+| **검색** | `⌘F` — 메시지·작성자·SHA 를 **전체 히스토리**에서. 파일 우클릭 → 이 파일의 기록 |
+| **Claude 연결 (MCP)** | Claude 가 저장소 목록 조회, 탭 열기, 상태/로그 확인, git 작업을 Git Rising 을 통해 실행 |
+| **설정** | 테마(라이트/다크/시스템) · 강조 색 · 글자 크기 · 줄 간격 · 아바타 · 컬럼 · 자동 가져오기 · 풀 방식 · 셸 등 |
+| **한글 / 인코딩** | EUC-KR(CP949)·Shift_JIS·GBK·UTF-16 파일도 diff 가 깨지지 않고, 맥의 자모 분리(NFD) 파일명도 정상 표시 |
 
-## 우클릭 메뉴 (커밋 / 브랜치)
+## 가볍게 만든 부분
 
-| 메뉴 | 하는 일 | git |
-| --- | --- | --- |
-| 빨리감기 | 현재 브랜치를 그 브랜치 위치로 앞당김 (갈라졌으면 실패 → 안전) | `merge --ff-only` |
-| 머지 | 그 브랜치를 현재 브랜치에 합치는 커밋 생성 | `merge` |
-| 리베이스 | 현재 브랜치 커밋들을 그 브랜치 끝으로 옮김 (SHA 바뀜) | `rebase` |
-| ~로 전환 | 그 브랜치로 checkout. 원격 브랜치면 로컬 브랜치를 만들어 추적 | `checkout` |
-| 이 커밋으로 이동 | 브랜치 없이 그 커밋 상태로 (detached) | `checkout` |
-| 여기서 새 브랜치 | 그 커밋에서 브랜치 생성 | `branch` |
-| 체리픽 | 그 커밋 변경만 현재 브랜치에 새 커밋으로 | `cherry-pick` |
-| 되돌리기(reset) | Soft: 변경을 스테이징에 남김 / Mixed: 작업 폴더에 남김 / Hard: 다 버림 | `reset` |
-| 이 커밋 취소하는 커밋 | 기록은 두고 반대 변경 커밋 생성 (푸시한 커밋에 안전) | `revert` |
-| 브랜치 삭제 | 로컬 삭제(`-d`, 강제 `-D`) / 원격 삭제 | `branch -d`, `push --delete` |
-| 복사 | 브랜치 이름, SHA, GitHub 브랜치·커밋 링크 | |
-| 태그 달기 | 가벼운 태그 / 설명 있는 태그(릴리즈용) | `tag`, `tag -a` |
+- **폴링 없음** — 파일 감시(fs.watch)로 바뀐 순간만 갱신하고, 창이 백그라운드면 감시를 멈춥니다. 열려 있는 탭 하나만 감시하므로 워크트리가 많아도 CPU 를 쓰지 않습니다.
+- 커밋 목록은 보이는 줄만 DOM 으로 만들어 재사용하고, 그래프는 화면 크기 canvas 한 장.
+- 그래프 배치는 추가분만 계산(증분), 커밋 상세·diff 는 캐시.
 
-머지·리베이스·리셋·되돌리기·체리픽·삭제는 실행 전에 확인 창이 뜹니다.
-머지/리베이스 중 충돌이 나면 상단에 노란 배너가 뜨고, 거기서 **계속 / 중단** 할 수 있어요.
+## Claude 에서 쓰기 (MCP)
+
+앱의 **설정 → Claude 연결 → 등록** 을 누르면 `claude mcp add` 를 대신 실행합니다. 수동으로는:
+
+```bash
+claude mcp add --scope user git-rising -e ELECTRON_RUN_AS_NODE=1 -- \
+  "/Applications/Git Rising.app/Contents/MacOS/Git Rising" \
+  "/Applications/Git Rising.app/Contents/Resources/app/src/mcp.js"
+```
+
+도구: `list_repos` · `open_repo` · `repo_overview` · `list_branches` · `repo_log` · `show_commit` · `search_commits` · `git_action` · `set_scan_roots`
+예) “docca 레포 열어줘”, “develop 을 master 로 reset --hard 해줘”, “최근 커밋 요약해줘”
 
 ## 단축키
 
-| 키 | 동작 |
-| --- | --- |
-| `⌘F` | 커밋 검색 (Enter 다음, Shift+Enter 이전) |
-| `⌘⌥F` | 브랜치 필터 |
-| `↑ ↓` / `j k` | 커밋 이동 |
-| `⌘R` | 새로고침 (터미널에서 바뀌면 자동으로도 갱신) |
-| `Esc` | diff / 메뉴 닫기 |
-| 브랜치 더블클릭 | 그 브랜치로 전환 |
+| 키 | 동작 | 키 | 동작 |
+| --- | --- | --- | --- |
+| `⌘K` | 명령 팔레트 | `⌘O` | 저장소 찾기 |
+| `⌘F` | 커밋 검색 | `⌘⌥F` | 브랜치 필터 |
+| `↑ ↓` / `j k` | 커밋 이동 | `Shift+H` | HEAD 로 |
+| `⌘Z` | 되돌리기 | `` ⌃` `` | 터미널 |
+| `⌘1–9` | 탭 전환 | `⌘W` | 탭 닫기 |
+| `Enter` | 첫 파일 diff | `?` | 단축키 도움말 |
+
+## 릴리즈 만들기 (자동 업데이트 배포)
+
+```bash
+npm version patch          # package.json 버전 올리고 태그 생성
+git push --follow-tags     # v* 태그 → GitHub Actions 가 mac/win 빌드를 Release 에 올림
+```
+
+설치된 앱은 6시간마다 최신 Release 를 확인하고, 상태바의 알림을 누르면 내려받아 교체 후 재시작합니다.
 
 ## 구조
 
-- `src/main.js` — Electron 메인 프로세스. `127.0.0.1` 임의 포트로 로컬 서버를 띄우고 창을 엶
-- `src/server.js` — 시스템 `git` 을 호출하는 작은 HTTP API (외부 의존성 없음)
-- `public/` — 화면 (바닐라 JS + canvas 그래프)
-
-시스템에 설치된 `git` 을 그대로 쓰기 때문에 인증(ssh 키, credential helper)도 평소 설정 그대로 동작합니다.
+- `src/main.js` — Electron 메인. 로컬 서버(127.0.0.1 임의 포트)를 띄우고 창을 엶
+- `src/server.js` — 시스템 `git` 을 호출하는 HTTP API, 파일 감시(SSE), 터미널(WebSocket + node-pty)
+- `src/updater.js` — GitHub Releases 기반 자동 업데이트
+- `src/mcp.js` — MCP 서버 (stdio)
+- `public/` — 화면 (바닐라 JS, canvas 그래프)
