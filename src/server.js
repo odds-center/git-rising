@@ -806,12 +806,141 @@ async function apiOpenFile(q, body) {
   return { ok: true, path: out };
 }
 
+// ---------- repo logo + author avatars (cached on disk) ----------
+const IMG_CACHE = path.join(CONFIG_DIR, 'images');
+const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
+async function fetchImage(url) {
+  try {
+    const r = await fetch(url, { redirect: 'follow', headers: { 'user-agent': 'git-rising' }, signal: AbortSignal.timeout(8000) });
+    const type = r.headers.get('content-type') || '';
+    if (!r.ok || !type.startsWith('image/')) return null;
+    return { buf: Buffer.from(await r.arrayBuffer()), type };
+  } catch { return null; }
+}
+// key → { buf, type } | null. Misses are remembered for a week so we don't keep asking the network.
+const imgJobs = new Map();
+function cachedImage(key, resolver) {
+  const file = path.join(IMG_CACHE, md5(key));
+  if (imgJobs.has(key)) return imgJobs.get(key);
+  const job = (async () => {
+    try {
+      const meta = JSON.parse(await fs.promises.readFile(file + '.json', 'utf8'));
+      if (meta.none) { if (Date.now() - meta.at < 7 * 864e5) return null; }
+      else if (Date.now() - meta.at < 30 * 864e5) return { buf: await fs.promises.readFile(file), type: meta.type };
+    } catch {}
+    const img = await resolver();
+    await fs.promises.mkdir(IMG_CACHE, { recursive: true });
+    if (img) { await fs.promises.writeFile(file, img.buf); await fs.promises.writeFile(file + '.json', JSON.stringify({ type: img.type, at: Date.now() })); }
+    else await fs.promises.writeFile(file + '.json', JSON.stringify({ none: true, at: Date.now() }));
+    return img;
+  })().finally(() => setTimeout(() => imgJobs.delete(key), 60000));
+  imgJobs.set(key, job);
+  return job;
+}
+async function githubSlug(repo) {
+  const url = (await git(repo, ['remote', 'get-url', 'origin']).catch(() => '')).trim() || (await git(repo, ['remote', '-v']).catch(() => '')).split(/\s+/)[1] || '';
+  const web = webUrl(url);
+  const m = web && web.match(/^https:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)$/);
+  if (m) return { owner: m[1], name: m[2] };
+  // ssh host aliases (Host github-work → github.com) still look like "alias:owner/repo"
+  const a = url.match(/^git@github[\w.-]*:([^/]+)\/(.+?)(\.git)?$/);
+  return a ? { owner: a[1], name: a[2] } : null;
+}
+const LOGO_CANDIDATES = ['logo.png', 'logo.svg', 'icon.png', 'icon.svg', '.github/logo.png', '.github/icon.png', 'assets/logo.png', 'assets/icon.png', 'public/logo.png', 'public/logo.svg',
+  'public/icon.png', 'public/favicon.png', 'public/favicon.svg', 'public/favicon.ico', 'build/icon.png', 'resources/icon.png', 'static/logo.png', 'static/favicon.png', 'src/assets/logo.png', 'src/assets/logo.svg',
+  'app/icon.png', 'app/favicon.ico', 'src/app/icon.png', 'src/app/favicon.ico', 'docs/logo.png', 'favicon.ico'];
+async function repoIcon(q) {
+  const repo = await resolveRepo(q.repo);
+  if (q.local !== '0') {
+    for (const c of LOGO_CANDIDATES) {
+      const f = path.join(repo, c);
+      try {
+        const st = await fs.promises.stat(f);
+        if (st.isFile() && st.size > 0 && st.size < 3 * 1024 * 1024) return { buf: await fs.promises.readFile(f), type: BLOB_MIME[path.extname(f).slice(1)] || 'image/png' };
+      } catch {}
+    }
+  }
+  if (q.remote === '0') return null;
+  const slug = await githubSlug(repo);
+  if (!slug) return null;
+  return cachedImage('owner:' + slug.owner.toLowerCase(), () => fetchImage(`https://github.com/${encodeURIComponent(slug.owner)}.png?size=96`));
+}
+let ghOk = null;
+function gh(args) {
+  return new Promise((resolve) => {
+    if (ghOk === false) return resolve('');
+    execFile('gh', args, { timeout: 10000, encoding: 'utf8', env: process.env }, (err, out) => {
+      if (err && err.code === 'ENOENT') ghOk = false;
+      resolve(err ? '' : out.trim());
+    });
+  });
+}
+let ghTokenList = null;
+async function ghTokens() {
+  if (ghTokenList) return ghTokenList;
+  const status = await new Promise((resolve) => execFile('gh', ['auth', 'status'], { timeout: 8000, encoding: 'utf8' }, (_e, out, err) => resolve(`${out || ''}${err || ''}`)));
+  const users = [...status.matchAll(/github\.com account (\S+)/g)].map((m) => m[1]);
+  const tokens = [];
+  for (const u of users) { const t = await gh(['auth', 'token', '--hostname', 'github.com', '--user', u]); if (t) tokens.push(t); }
+  if (!tokens.length) { const t = await gh(['auth', 'token']); if (t) tokens.push(t); }
+  return (ghTokenList = tokens);
+}
+const ownerToken = new Map(); // owner → token that could read it
+async function githubApi(pathname, owner) {
+  const tokens = await ghTokens();
+  const order = ownerToken.has(owner) ? [ownerToken.get(owner)] : [...tokens, null];
+  for (const t of order) {
+    try {
+      const r = await fetch(`https://api.github.com/${pathname}`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'git-rising', ...(t ? { authorization: `Bearer ${t}` } : {}) }, signal: AbortSignal.timeout(8000) });
+      if (r.ok) { if (t) ownerToken.set(owner, t); return await r.json(); }
+    } catch {}
+  }
+  return null;
+}
+async function authorAvatar(q) {
+  const email = String(q.email || '').trim().toLowerCase();
+  if (!email) return null;
+  return cachedImage('author:' + email, async () => {
+    let m = email.match(/^(\d+)\+[^@]+@users\.noreply\.github\.com$/);
+    if (m) return fetchImage(`https://avatars.githubusercontent.com/u/${m[1]}?s=96`);
+    m = email.match(/^([^@+]+)@users\.noreply\.github\.com$/);
+    if (m) return fetchImage(`https://github.com/${encodeURIComponent(m[1])}.png?size=96`);
+    // ask GitHub who authored one of this person's commits — try every account logged in to the gh CLI,
+    // since the repo may belong to a different account than the active one
+    if (q.repo && SHA_RE.test(q.sha || '')) {
+      const slug = await githubSlug(await resolveRepo(q.repo)).catch(() => null);
+      if (slug) {
+        const j = await githubApi(`repos/${slug.owner}/${slug.name}/commits/${q.sha}`, slug.owner);
+        const url = j?.author?.avatar_url;
+        if (url) { const img = await fetchImage(url + (url.includes('?') ? '&' : '?') + 's=96'); if (img) return img; }
+      }
+    }
+    // author name that is shaped like a GitHub login ("sangmin-98") → that account's picture
+    const login = String(q.name || '').trim();
+    if (/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(login) && /[-0-9]|^[a-z]+$/.test(login) && login.length >= 4) {
+      const img = await fetchImage(`https://github.com/${login}.png?size=96`);
+      if (img) return img;
+    }
+    if (q.gravatar === '1') return fetchImage(`https://www.gravatar.com/avatar/${md5(email)}?s=96&d=404`);
+    return null;
+  });
+}
+async function handleImage(res, job) {
+  const img = await job.catch(() => null);
+  if (!img) { res.writeHead(404, { 'cache-control': 'max-age=300' }); return res.end(); }
+  const headers = { 'content-type': img.type, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff' };
+  if (img.type === 'image/svg+xml') headers['content-security-policy'] = "default-src 'none'; style-src 'unsafe-inline'";
+  res.writeHead(200, headers);
+  res.end(img.buf);
+}
+
 // vendored browser libraries for previews / terminal (served from node_modules)
 const VENDOR = {
   'docx-preview.js': 'docx-preview/dist/docx-preview.min.js',
   'jszip.js': 'jszip/dist/jszip.min.js',
   'xlsx.js': 'xlsx/dist/xlsx.full.min.js',
   'marked.js': 'marked/lib/marked.umd.js',
+  'hljs.js': '@highlightjs/cdn-assets/highlight.min.js',
   'xterm.js': '@xterm/xterm/lib/xterm.js',
   'xterm.css': '@xterm/xterm/css/xterm.css',
   'xterm-fit.js': '@xterm/addon-fit/lib/addon-fit.js',
@@ -1211,6 +1340,8 @@ export function startServer(hooks = {}) {
         res.end(e.message);
       });
     }
+    if (url.pathname === '/api/repoicon') return handleImage(res, repoIcon(Object.fromEntries(url.searchParams)));
+    if (url.pathname === '/api/avatar') return handleImage(res, authorAvatar(Object.fromEntries(url.searchParams)));
     if (url.pathname.startsWith('/vendor/')) {
       const vp = vendorPath(url.pathname.slice(8));
       if (!vp) return res.writeHead(404).end();

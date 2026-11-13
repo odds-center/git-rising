@@ -26,12 +26,14 @@ let ROW = 24, LANE = 14, PAD = 10, NODE_R = 4;
 
 // ---------------------------------------------------------------- preferences (설정)
 const PREF_DEF = {
-  theme: LS.get('theme', 'system'), accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
-  avatars: false, showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
+  theme: LS.get('theme', 'dark'), accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
+  avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
   autoFetch: LS.get('autoFetch', false) ? 5 : 0, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
   termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
 };
 const P = Object.assign({}, PREF_DEF, LS.get('prefs', {}));
+// one-time: profile photos / avatars became the default in 0.2.1
+if (!LS.get('m021')) { P.avatars = true; P.avatarPhotos = true; LS.set('prefs', P); LS.set('m021', 1); }
 const ACCENTS = { indigo: ['#7c8aff', '#5463ff'], blue: ['#4c9aff', '#1f6feb'], violet: ['#a77bff', '#7c4dff'], green: ['#3fcf8e', '#14a06a'], orange: ['#ff9a4c', '#e2700c'], pink: ['#f06bb3', '#d63384'], teal: ['#2fc6c6', '#0e9a9a'] };
 const DENSITY = { compact: 21, normal: 24, comfy: 28 };
 const COL_DEF = { ref: 160, graph: 0, author: 110, date: 84, sha: 72 }; // graph 0 = auto
@@ -165,6 +167,26 @@ const S = {
   find: '', findShas: [], findSet: new Set(), findPos: -1,
   ver: 0, collapsed: new Set(LS.get('collapsed', ['sec:tags'])), fileView: LS.get('fileView', 'path'),
   cache: new Map(), es: null, live: false, repos: null, version: '', platform: '',
+};
+
+// ================================================================ author photos / repo logos
+const AV = new Map(); // email → { img, ok }
+function avatarImg(c) {
+  if (!P.avatarPhotos || !c.email || !S.repo) return null;
+  let e = AV.get(c.email);
+  if (!e) {
+    e = { img: new Image(), ok: false };
+    AV.set(c.email, e);
+    e.img.onload = () => { e.ok = true; renderRows(); };
+    e.img.src = avatarURL(c.email, c.sha, c.author);
+  }
+  return e.ok ? e.img : null;
+}
+const avatarURL = (email, sha, name = '') => `/api/avatar?${new URLSearchParams({ repo: S.repo, email, sha, name, ...(P.gravatar ? { gravatar: '1' } : {}) })}`;
+// letter tile that is covered by the logo image once (if) it loads
+const logoHTML = (repoPath, cls = 'repo-ic') => {
+  const name = repoPath.split(/[\\/]/).pop() || '?';
+  return `<span class="${cls}" style="--h:${hue(name)}">${esc(nfc(name)[0].toUpperCase())}${P.repoLogos ? `<img loading="lazy" src="/api/repoicon?repo=${encodeURIComponent(repoPath)}" onload="this.parentNode.classList.add('has-img')" onerror="this.remove()">` : ''}</span>`;
 };
 
 // ================================================================ incremental graph layout
@@ -391,7 +413,7 @@ function fillRow(el, v) {
   }
   el.innerHTML = c.wip
     ? `<div class="c-ref"></div><div class="c-graph"></div><div class="c-msg"><span class="wip">커밋 안 한 변경 ${S.status.length}개</span></div><div></div><div></div><div></div>`
-    : `<div class="c-ref">${ref}</div><div class="c-graph"></div><div class="c-msg">${escN(c.subject)}</div><div class="c-author">${escN(c.author)}</div><div class="c-date" title="${fmtDate(c.time)}">${P.dateMode === 'absolute' ? fmtDate(c.time).slice(2) : relDate(c.time)}</div><div class="c-sha">${c.sha.slice(0, 7)}</div>`;
+    : `<div class="c-ref">${ref}</div><div class="c-graph"></div><div class="c-msg">${c.sha === S.info?.head ? `<span class="here" title="지금 체크아웃된 위치 (HEAD)">${icon('checkout')}현재 위치</span>` : ''}${escN(c.subject)}</div><div class="c-author">${escN(c.author)}</div><div class="c-date" title="${fmtDate(c.time)}">${P.dateMode === 'absolute' ? fmtDate(c.time).slice(2) : relDate(c.time)}</div><div class="c-sha">${c.sha.slice(0, 7)}</div>`;
 }
 function headCol() { const i = S.index.get(S.info?.head); return i == null ? 0 : S.L.rows[i].col; }
 
@@ -417,6 +439,7 @@ function paint() {
     }
     const c = rowAt(v);
     el.classList.toggle('selected', c.sha === S.selected);
+    el.classList.toggle('head', !c.wip && c.sha === S.info?.head);
     el.classList.toggle('match', !!S.find && S.findSet.has(c.sha));
     el.classList.toggle('dim', !!S.find && S.findShas.length > 0 && !S.findSet.has(c.sha));
   }
@@ -498,6 +521,13 @@ function drawGraph(first, last) {
       const r = NODE_R;
       const peb = (rr) => { g.beginPath(); g.roundRect(x - rr, y - rr, rr * 2, rr * 2, rr * 0.72); };
       g.fillStyle = color; peb(r + 1.5); g.fill();
+      const photo = avatarImg(c);
+      if (photo) {
+        g.save(); peb(r - 0.3); g.clip(); g.drawImage(photo, x - r, y - r, r * 2, r * 2); g.restore();
+        if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.6; peb(r + 4); g.stroke(); }
+        g.lineWidth = 1.6;
+        continue;
+      }
       g.fillStyle = avColor(c.email); peb(r - 0.3); g.fill();
       g.fillStyle = '#fff'; g.font = `600 ${Math.round(r * 0.95)}px ${getComputedStyle(document.body).fontFamily}`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(initials(c.author), x, y + 0.5);
@@ -620,7 +650,7 @@ function renderDetail() {
       ${labels.length ? `<div class="d-refs">${labels.map((l) => pillHTML(l, col)).join('')}</div>` : ''}
     </div>
     <div class="d-author">
-      <div class="av" style="background:${avColor(d.email)}">${esc(initials(d.author))}</div>
+      <div class="av" style="background:${avColor(d.email)}">${esc(initials(d.author))}${P.avatarPhotos ? `<img src="${avatarURL(d.email, d.sha, d.author)}" onerror="this.remove()">` : ''}</div>
       <div class="who"><div class="nm">${esc(d.author)}</div><div class="sub" title="${esc(d.email)}">${fmtDate(d.time)}${d.committer !== d.author ? ` · 커밋 ${esc(d.committer)}` : ''}</div></div>
       <div class="par">${d.parents.length ? '부모' : '최초 커밋'}${d.parents.map((p) => `<a data-goto="${p}">${p.slice(0, 7)}</a>`).join('')}</div>
     </div>
@@ -639,26 +669,31 @@ function blobURL(side, f) {
 async function openDiff(fi) {
   const f = S.detailFiles?.[fi];
   if (!f) return;
-  S.diffFile = f;
+  S.diffFile = f; S.diffPatch = null;
   document.querySelectorAll('#detail .file').forEach((e) => e.classList.toggle('selected', +e.dataset.fi === fi));
   $('#diff-view').hidden = false;
-  $('#diff-title').textContent = nfc((f.oldPath ? f.oldPath + ' → ' : '') + f.path);
   const k = kindOf(f.path);
-  const canText = ['text', 'md'].includes(k) || f.path.endsWith('.svg') || /\.(csv|tsv)$/i.test(f.path);
+  const textish = ['text', 'md'].includes(k) || /\.(svg|csv|tsv)$/i.test(f.path);
   const canPreview = k !== 'text';
-  const mode = canPreview && !(k === 'md' || f.path.endsWith('.svg') || /\.(csv|tsv)$/i.test(f.path)) ? 'preview' : 'diff';
-  renderDiffHead(canText, canPreview, mode);
+  const mode = textish ? P.diffMode : 'preview';
+  renderDiffHead(f, textish, canPreview, mode);
   showMode(mode);
 }
-function renderDiffHead(canText, canPreview, mode) {
+function renderDiffHead(f, textish, canPreview, mode) {
   const h = $('#diff-head');
-  h.innerHTML = `<button id="diff-close" class="ib" title="닫기 (Esc)">${icon('x')}</button><span id="diff-title">${esc($('#diff-title')?.textContent || '')}</span><span class="grow"></span>
-    ${canText && canPreview ? `<div class="seg" style="margin:0"><button data-mode="diff" class="${mode === 'diff' ? 'on' : ''}">변경 내용</button><button data-mode="preview" class="${mode === 'preview' ? 'on' : ''}">미리보기</button></div>` : ''}
-    <button class="btn sm" id="diff-open" title="이 버전 파일을 기본 앱으로 엽니다">${icon('external')} 기본 앱으로 열기</button>
-    ${canText ? '<label class="chk"><input type="checkbox" id="diff-wrap"> 줄바꿈</label>' : ''}`;
+  const [fic, fcol] = fileIcon(f.path);
+  const modes = [...(textish ? [['unified', '변경', '바뀐 줄만 한 단으로 (diff)'], ['split', '좌우 비교', '왼쪽 이전 · 오른쪽 이후'], ['full', '파일 전체', '이 커밋 시점의 파일 전체 (바뀐 줄 표시)']] : []), ...(canPreview ? [['preview', '미리보기', '렌더링된 모습']] : [])];
+  h.innerHTML = `<button id="diff-close" class="ib" title="닫기 (Esc)">${icon('x')}</button><span class="fic" style="color:${fcol}">${icon(fic)}</span><span id="diff-title">${escN((f.oldPath ? f.oldPath + ' → ' : '') + f.path)}</span><span class="grow"></span>
+    ${modes.length > 1 ? `<div class="seg" style="margin:0">${modes.map(([m, l, t]) => `<button data-mode="${m}" title="${t}" class="${mode === m ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
+    ${textish ? '<label class="chk" title="긴 줄을 화면 폭에 맞춰 줄바꿈"><input type="checkbox" id="diff-wrap"> 줄바꿈</label>' : ''}
+    <button class="ib" id="diff-open" title="기본 앱으로 열기">${icon('external')}</button>`;
   $('#diff-close').onclick = closeDiff;
   $('#diff-open').onclick = () => openExternal(S.diffFile);
-  h.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => { h.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b)); showMode(b.dataset.mode); }));
+  h.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => {
+    h.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b));
+    if (b.dataset.mode !== 'preview') setPref('diffMode', b.dataset.mode);
+    showMode(b.dataset.mode);
+  }));
   const wrap = $('#diff-wrap');
   if (wrap) { wrap.checked = LS.get('wrap', false); $('#diff-body').classList.toggle('wrap', wrap.checked); wrap.onchange = () => { LS.set('wrap', wrap.checked); $('#diff-body').classList.toggle('wrap', wrap.checked); }; }
 }
@@ -667,24 +702,148 @@ async function openExternal(f) {
   try { await post('openfile', { repo: S.repo }, { sha: d.wip ? 'WIP' : d.sha, path: f.path }); }
   catch (e) { toast(e.message, 'err'); }
 }
+async function getPatch(f) {
+  if (S.diffPatch?.f === f) return S.diffPatch.r;
+  const d = S.detail;
+  const params = { repo: S.repo, path: f.path };
+  if (f.oldPath) params.oldPath = f.oldPath;
+  if (d.wip) { params.sha = 'WIP'; if (f.status === '?') params.untracked = '1'; }
+  else { params.sha = d.sha; if (d.parents[0]) params.parent = d.parents[0]; }
+  const r = await api('diff', params);
+  S.diffPatch = { f, r };
+  return r;
+}
 async function showMode(mode) {
   const f = S.diffFile, body = $('#diff-body');
+  body.className = LS.get('wrap', false) && mode !== 'preview' ? 'wrap' : '';
   body.innerHTML = '<div class="diff-note">불러오는 중…</div>';
-  if (mode === 'diff') {
-    const d = S.detail;
-    const params = { repo: S.repo, path: f.path };
-    if (f.oldPath) params.oldPath = f.oldPath;
-    if (d.wip) { params.sha = 'WIP'; if (f.status === '?') params.untracked = '1'; }
-    else { params.sha = d.sha; if (d.parents[0]) params.parent = d.parents[0]; }
-    try { const r = await api('diff', params); if (S.diffFile === f) renderDiff(r.patch, r.truncated); }
-    catch (e) { body.innerHTML = `<div class="diff-note">${esc(e.message)}</div>`; }
-    return;
-  }
+  try {
+    if (mode === 'unified' || mode === 'split') {
+      const [r] = await Promise.all([getPatch(f), ensureHljs()]);
+      if (S.diffFile !== f) return;
+      if (mode === 'split') renderSplit(r.patch, r.truncated, f); else renderDiff(r.patch, r.truncated, f);
+      return;
+    }
+    if (mode === 'full') {
+      const side = f.status === 'D' ? 'old' : 'new';
+      const [r, txt] = await Promise.all([getPatch(f).catch(() => ({ patch: '' })), fetch(blobURL(side, f) + '&text=1').then((x) => (x.ok ? x.text() : Promise.reject(new Error('파일을 읽을 수 없어요')))), ensureHljs()]);
+      if (S.diffFile !== f) return;
+      renderFull(txt, r.patch, f, side);
+      return;
+    }
+  } catch (e) { body.innerHTML = `<div class="diff-note">${esc(e.message)}</div>`; return; }
   const hasOld = f.status !== 'A' && f.status !== '?' && !(S.detail.parents?.length === 0 && !S.detail.wip);
   const hasNew = f.status !== 'D';
   const sides = [hasOld && 'old', hasNew && 'new'].filter(Boolean);
   body.innerHTML = `<div class="pv">${sides.map((s) => `<div class="pv-side"><div class="pv-label">${s === 'old' ? '<span class="tag-old">● 이전</span>' : '<span class="tag-new">● 이후</span>'}<span class="pv-meta" data-meta="${s}"></span></div><div class="pv-frame" data-side="${s}"></div></div>`).join('')}</div>`;
   for (const s of sides) renderPreview(body.querySelector(`[data-side="${s}"]`), blobURL(s, f), f, s);
+}
+
+// ---- syntax highlighting (highlight.js, loaded on first use)
+const ensureHljs = () => loadScript('hljs.js').catch(() => {});
+const LANG_ALIAS = { mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', tsx: 'typescript', mts: 'typescript', cts: 'typescript', htm: 'xml', html: 'xml', vue: 'xml', svelte: 'xml', svg: 'xml', plist: 'xml', yml: 'yaml', zsh: 'bash', sh: 'bash', fish: 'bash', h: 'c', hpp: 'cpp', cc: 'cpp', mm: 'objectivec', m: 'objectivec', kts: 'kotlin', gradle: 'groovy', toml: 'ini', env: 'ini', conf: 'ini', mdx: 'markdown', jsonc: 'json', json5: 'json', dockerfile: 'dockerfile', gql: 'graphql', prisma: 'graphql' };
+function langOf(p) {
+  const base = p.split('/').pop().toLowerCase();
+  const ext = base.includes('.') ? base.split('.').pop() : base;
+  const l = LANG_ALIAS[ext] || ext;
+  return window.hljs?.getLanguage(l) ? l : null;
+}
+function hlLine(text, lang) {
+  if (!lang || text.length > 2000) return esc(text);
+  try { return window.hljs.highlight(text, { language: lang, ignoreIllegals: true }).value; } catch { return esc(text); }
+}
+// highlight a whole file, then cut it into lines while keeping <span>s balanced on each line
+function hlLines(text, lang) {
+  if (!lang || text.length > 400000) return text.split('\n').map(esc);
+  let html;
+  try { html = window.hljs.highlight(text, { language: lang, ignoreIllegals: true }).value; } catch { return text.split('\n').map(esc); }
+  const out = [];
+  let open = [];
+  for (const raw of html.split('\n')) {
+    const stack = [...open];
+    const re = /<span[^>]*>|<\/span>/g;
+    let m;
+    while ((m = re.exec(raw))) { if (m[0] === '</span>') stack.pop(); else stack.push(m[0]); }
+    out.push(open.join('') + raw + '</span>'.repeat(stack.length));
+    open = stack;
+  }
+  return out;
+}
+// patch → [{type:'hunk'|'ctx'|'add'|'del'|'meta', text, o, n}]
+function parsePatch(patch) {
+  const rows = [];
+  let o = 0, n = 0, inHunk = false;
+  for (const l of patch.split('\n')) {
+    if (l.startsWith('@@')) {
+      const m = l.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)/);
+      if (m) { o = +m[1]; n = +m[2]; }
+      inHunk = true;
+      rows.push({ type: 'hunk', text: l });
+    } else if (!inHunk || l.startsWith('diff --git')) {
+      inHunk = false;
+      if (/^(diff --git|index |--- |\+\+\+ )/.test(l) || !l) continue;
+      rows.push({ type: 'meta', text: l });
+    } else if (l[0] === '+') rows.push({ type: 'add', text: l.slice(1), n: n++ });
+    else if (l[0] === '-') rows.push({ type: 'del', text: l.slice(1), o: o++ });
+    else if (l[0] === '\\') rows.push({ type: 'meta', text: l });
+    else if (l !== '') rows.push({ type: 'ctx', text: l.slice(1), o: o++, n: n++ });
+  }
+  return rows;
+}
+function binaryNote(patch) {
+  const body = $('#diff-body');
+  if (!patch.trim()) { body.innerHTML = '<div class="diff-note">표시할 텍스트 변경이 없어요 (바이너리 / 권한 변경)</div>'; return true; }
+  if (/^Binary files /m.test(patch) && !/^@@/m.test(patch)) {
+    body.innerHTML = `<div class="diff-note">바이너리 파일이에요.<br><br><button class="btn" data-ext>${icon('external')} 기본 앱으로 열기</button></div>`;
+    body.querySelector('[data-ext]').onclick = () => openExternal(S.diffFile);
+    return true;
+  }
+  return false;
+}
+function renderDiff(patch, truncated, f) {
+  if (binaryNote(patch)) return;
+  const rows = parsePatch(patch);
+  const lang = rows.length < 6000 ? langOf(f.path) : null;
+  const out = rows.map((r) => {
+    if (r.type === 'hunk') return `<div class="dl hunk"><span class="ln"></span><span class="ln"></span><span class="tx">${esc(r.text)}</span></div>`;
+    if (r.type === 'meta') return `<div class="dl meta"><span class="ln"></span><span class="ln"></span><span class="tx">${esc(r.text)}</span></div>`;
+    const mk = r.type === 'add' ? '+' : r.type === 'del' ? '−' : ' ';
+    return `<div class="dl ${r.type}"><span class="ln">${r.o ?? ''}</span><span class="ln">${r.n ?? ''}</span><span class="tx"><span class="mk">${mk}</span>${hlLine(r.text, lang)}</span></div>`;
+  });
+  if (truncated) out.push('<div class="diff-note">diff 가 너무 커서 일부만 표시합니다</div>');
+  $('#diff-body').innerHTML = out.join('');
+  $('#diff-body').scrollTop = 0;
+}
+function renderSplit(patch, truncated, f) {
+  if (binaryNote(patch)) return;
+  const rows = parsePatch(patch);
+  const lang = rows.length < 6000 ? langOf(f.path) : null;
+  const out = [];
+  const cell = (r, side) => (r ? `<span class="ln">${side === 'l' ? r.o ?? '' : r.n ?? ''}</span><span class="tx ${r.type}">${hlLine(r.text, lang)}</span>` : '<span class="ln"></span><span class="tx none"></span>');
+  for (let i = 0; i < rows.length; ) {
+    const r = rows[i];
+    if (r.type === 'hunk' || r.type === 'meta') { out.push(`<div class="sl ${r.type}"><span class="full">${esc(r.text)}</span></div>`); i++; continue; }
+    if (r.type === 'ctx') { out.push(`<div class="sl">${cell(r, 'l')}${cell(r, 'r')}</div>`); i++; continue; }
+    const dels = [], adds = [];
+    while (rows[i]?.type === 'del') dels.push(rows[i++]);
+    while (rows[i]?.type === 'add') adds.push(rows[i++]);
+    for (let k = 0; k < Math.max(dels.length, adds.length); k++) out.push(`<div class="sl">${cell(dels[k], 'l')}${cell(adds[k], 'r')}</div>`);
+  }
+  if (truncated) out.push('<div class="diff-note">diff 가 너무 커서 일부만 표시합니다</div>');
+  $('#diff-body').innerHTML = `<div class="split-head"><span>이전</span><span>이후</span></div>` + out.join('');
+  $('#diff-body').scrollTop = 0;
+}
+function renderFull(text, patch, f, side) {
+  const changed = new Set(parsePatch(patch || '').filter((r) => (side === 'new' ? r.type === 'add' : r.type === 'del')).map((r) => (side === 'new' ? r.n : r.o)));
+  const lines = hlLines(text.replace(/\n$/, ''), langOf(f.path));
+  const MAX = 20000;
+  const cls = side === 'new' ? 'add' : 'del';
+  const body = $('#diff-body');
+  body.innerHTML = lines.slice(0, MAX).map((l, i) => `<div class="fl${changed.has(i + 1) ? ' ' + cls : ''}" ${changed.has(i + 1) ? 'data-chg' : ''}><span class="ln">${i + 1}</span><span class="tx">${l || ' '}</span></div>`).join('')
+    + (lines.length > MAX ? `<div class="diff-note">${lines.length.toLocaleString()}줄 중 ${MAX.toLocaleString()}줄까지 표시</div>` : '');
+  // jump to the first changed line
+  const first = body.querySelector('[data-chg]');
+  body.scrollTop = first ? Math.max(0, first.offsetTop - 80) : 0;
 }
 
 const vendorLoaded = {};
@@ -753,32 +912,6 @@ async function renderPreview(box, url, f, side) {
   }
 }
 
-function renderDiff(patch, truncated) {
-  const body = $('#diff-body');
-  if (!patch.trim()) { body.innerHTML = '<div class="diff-note">표시할 텍스트 변경이 없어요 (바이너리 / 권한 변경)</div>'; return; }
-  if (/^Binary files /m.test(patch) && !/^@@/m.test(patch)) { body.innerHTML = `<div class="diff-note">바이너리 파일이에요.<br><br><button class="btn" data-ext>${icon('external')} 기본 앱으로 열기</button></div>`; body.querySelector('[data-ext]').onclick = () => openExternal(S.diffFile); return; }
-  const lines = patch.split('\n');
-  let o = 0, n = 0, inHunk = false;
-  const out = [];
-  for (const l of lines) {
-    if (l.startsWith('@@')) {
-      const m = l.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)/);
-      if (m) { o = +m[1]; n = +m[2]; }
-      inHunk = true;
-      out.push(`<div class="dl hunk"><span class="ln"></span><span class="ln"></span><span class="tx">${esc(l)}</span></div>`);
-    } else if (!inHunk || l.startsWith('diff --git')) {
-      inHunk = false;
-      if (/^(diff --git|index |--- |\+\+\+ )/.test(l) || !l) continue;
-      out.push(`<div class="dl meta"><span class="ln"></span><span class="ln"></span><span class="tx">${esc(l)}</span></div>`);
-    } else if (l[0] === '+') out.push(`<div class="dl add"><span class="ln"></span><span class="ln">${n++}</span><span class="tx">${esc(l)}</span></div>`);
-    else if (l[0] === '-') out.push(`<div class="dl del"><span class="ln">${o++}</span><span class="ln"></span><span class="tx">${esc(l)}</span></div>`);
-    else if (l[0] === '\\') out.push(`<div class="dl meta"><span class="ln"></span><span class="ln"></span><span class="tx">${esc(l)}</span></div>`);
-    else if (l !== '') out.push(`<div class="dl"><span class="ln">${o++}</span><span class="ln">${n++}</span><span class="tx">${esc(l)}</span></div>`);
-  }
-  if (truncated) out.push('<div class="diff-note">diff 가 너무 커서 일부만 표시합니다</div>');
-  body.innerHTML = out.join('');
-  body.scrollTop = 0;
-}
 function closeDiff() {
   $('#diff-view').hidden = true;
   $('#diff-body').innerHTML = '';
@@ -850,7 +983,7 @@ function renderSidebar() {
   // header
   $('#sb-repo-name').textContent = S.info?.name || '—';
   $('#sb-repo-path').textContent = S.info ? tilde(S.info.path) : '';
-  $('.repo-ic').textContent = (S.info?.name || '?')[0].toUpperCase();
+  if (S.info && $('#sb-repo .repo-ic')?.dataset.repo !== S.info.path + P.repoLogos) { $('#sb-repo .repo-ic').outerHTML = logoHTML(S.info.path); $('#sb-repo .repo-ic').dataset.repo = S.info.path + P.repoLogos; }
   const cur = local.find((r) => r.name === head);
   $('#sb-branch').innerHTML = `${icon('branch')}<span class="nm">${esc(head || (S.info?.head ? 'detached ' + S.info.head.slice(0, 7) : '—'))}</span>${cur ? trackHTML(cur.track) : ''}${icon('chev-down')}`;
 }
@@ -859,7 +992,7 @@ const findRef = (key) => { const i = key.indexOf(':'); const t = key.slice(0, i)
 // ================================================================ tabs / bars
 function saveTabs() { LS.set('tabs', S.tabs); LS.set('active', S.repo); }
 function renderTabs() {
-  $('#tab-list').innerHTML = S.tabs.map((t) => `<div class="tab${t === S.repo ? ' active' : ''}" data-tab="${esc(t)}" title="${esc(tilde(t))}"><span>${escN(t.split(/[\\/]/).pop())}</span><span class="x" data-close="${esc(t)}">${icon('x')}</span></div>`).join('');
+  $('#tab-list').innerHTML = S.tabs.map((t) => `<div class="tab${t === S.repo ? ' active' : ''}" data-tab="${esc(t)}" title="${esc(tilde(t))}">${logoHTML(t, 'repo-ic tab-ic')}<span>${escN(t.split(/[\\/]/).pop())}</span><span class="x" data-close="${esc(t)}">${icon('x')}</span></div>`).join('');
   document.title = S.info ? `${S.info.name} — Git Rising` : 'Git Rising';
 }
 function renderActions() {
@@ -1254,7 +1387,7 @@ function renderPalette() {
     if (q) repos.sort((a, b) => b.s - a.s);
     const lim = P.mode === 'repos' ? 80 : q ? 8 : 5;
     groups.push({ title: P.mode === 'repos' ? `저장소 ${S.repos ? S.repos.repos.length + '개' : ''} · 최근 작업 순` : '저장소', items: repos.slice(0, lim).map(({ r }) => ({
-      icon: 'folder', html: hl(r.name, q), sub: tilde(r.path),
+      icon: 'folder', logo: r.path, html: hl(r.name, q), sub: tilde(r.path),
       right: `${r.worktrees?.length ? `<span class="badge" title="${esc(r.worktrees.map((w) => w.name + ' · ' + w.branch).join('\n'))}">워크트리 ${r.worktrees.length}</span>` : ''}${r.branch ? `<span class="br">${esc(r.branch)}</span>` : ''}${open.has(r.path) ? '<span class="open">● 열림</span>' : ''}<span>${r.activity ? relDate(r.activity / 1000) : ''}</span>`,
       run: () => openTab(r.path),
     })) });
@@ -1277,7 +1410,7 @@ function renderPalette() {
   let k = 0;
   const html = groups.filter((g) => g.items.length).map((g) => `<div class="pl-g">${esc(g.title)}</div>` + g.items.map((it) => {
     const i = k++;
-    return `<div class="pl-it${g.small ? ' sm' : ''}${i === P.sel ? ' on' : ''}" data-pi="${i}">${icon(it.icon)}<div class="tx"><span class="tt">${it.html}</span>${it.sub ? `<span class="ss">${esc(it.sub)}</span>` : ''}</div><div class="rt">${it.right || ''}</div></div>`;
+    return `<div class="pl-it${g.small ? ' sm' : ''}${i === P.sel ? ' on' : ''}" data-pi="${i}">${it.logo ? logoHTML(it.logo, 'repo-ic pl-ic') : icon(it.icon)}<div class="tx"><span class="tt">${it.html}</span>${it.sub ? `<span class="ss">${esc(it.sub)}</span>` : ''}</div><div class="rt">${it.right || ''}</div></div>`;
   }).join('')).join('');
   $('#pl-list').innerHTML = html || `<div class="pl-empty">${S.repos ? '찾는 항목이 없어요' : '저장소를 찾는 중…'}</div>`;
   const R = S.repos;
@@ -1309,6 +1442,8 @@ function setPref(k, v) {
   P[k] = v; LS.set('prefs', P);
   if (['theme', 'accent', 'fontSize'].includes(k)) applyTheme();
   if (k === 'density' || k === 'avatars') { applyGeometry(); relayout(); }
+  if (k === 'avatarPhotos' || k === 'gravatar') { AV.clear(); S.ver++; renderRows(); renderDetail(); }
+  if (k === 'repoLogos') { renderTabs(); renderSidebar(); }
   if (['showRemotes', 'order'].includes(k) && S.repo) { S.labelCache = new Map(); setSolo(S.solo); }
   if (k === 'showTags') { S.labelCache = new Map(); S.ver++; renderRows(); }
   if (['colAuthor', 'colDate', 'colSha'].includes(k)) { applyCols(); S.ver++; renderRows(); }
@@ -1317,8 +1452,8 @@ function setPref(k, v) {
 }
 function applyGeometry() {
   ROW = DENSITY[P.density] || 24;
-  LANE = P.avatars ? 20 : 14;
-  NODE_R = P.avatars ? 8 : ROW < 23 ? 3.5 : 4;
+  LANE = P.avatars ? 24 : 14;
+  NODE_R = P.avatars ? Math.min(9, ROW / 2 - 3) : ROW < 23 ? 3.5 : 4;
   document.documentElement.style.setProperty('--row', ROW + 'px');
   pool.forEach((el) => (el._v = -1));
   canvasSize = '';
@@ -1341,7 +1476,10 @@ async function settingsBody(sec) {
     ${optRow('날짜 표시', '', optSeg('dateMode', [['relative', '3시간 전'], ['absolute', '26-11-13 10:58']]))}
     ${optRow('시작할 때 탭 복원', '지난번에 열어둔 저장소 탭을 다시 엽니다', optToggle('restoreTabs'))}`;
   if (sec === 'graph') return `
-    ${optRow('작성자 아바타', '그래프 점 대신 작성자 이니셜을 표시', optToggle('avatars'))}
+    ${optRow('작성자 아바타', '그래프의 점 대신 작성자 얼굴/이니셜을 표시', optToggle('avatars'))}
+    ${optRow('프로필 사진 가져오기', 'GitHub 에서 커밋 작성자의 프로필 사진을 받아 캐시합니다 (gh 로그인 사용)', optToggle('avatarPhotos'))}
+    ${optRow('Gravatar 도 사용', 'GitHub 에서 못 찾은 이메일은 Gravatar 에 물어봅니다 (이메일 해시가 전송돼요)', optToggle('gravatar'))}
+    ${optRow('저장소 로고', '저장소 안의 로고 파일 → 없으면 GitHub 조직/소유자 이미지', optToggle('repoLogos'))}
     ${optRow('원격 브랜치 표시', '끄면 origin/* 은 그래프에서 숨김 (사이드바엔 그대로)', optToggle('showRemotes'))}
     ${optRow('태그 표시', '', optToggle('showTags'))}
     ${optRow('커밋 순서', '위상 순서는 브랜치가 덜 엉켜 보여요', optSeg('order', [['topo', '위상 순서'], ['date', '날짜 순서']]))}
