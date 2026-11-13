@@ -586,14 +586,14 @@ function drawGraph(first, last) {
       const photo = avatarImg(c);
       if (photo) {
         g.save(); peb(r - 0.3); g.clip(); g.drawImage(photo, x - r, y - r, r * 2, r * 2); g.restore();
-        if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.6; peb(r + 4); g.stroke(); }
+        if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.4; peb(r + 3); g.stroke(); }
         g.lineWidth = 1.6;
         continue;
       }
       g.fillStyle = avColor(c.email); peb(r - 0.3); g.fill();
       g.fillStyle = '#fff'; g.font = `600 ${Math.round(r * 0.95)}px ${getComputedStyle(document.body).fontFamily}`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(initials(c.author), x, y + 0.5);
-      if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.4; peb(r + 4); g.stroke(); }
+      if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.4; peb(r + 3); g.stroke(); }
       g.lineWidth = 1.6;
       continue;
     }
@@ -1827,7 +1827,7 @@ function setPref(k, v) {
 function applyGeometry() {
   ROW = DENSITY[P.density] || 24;
   LANE = P.avatars ? 24 : 14;
-  NODE_R = P.avatars ? Math.min(9, ROW / 2 - 3) : ROW < 23 ? 3.5 : 4;
+  NODE_R = P.avatars ? Math.min(9, ROW / 2 - 4) : ROW < 23 ? 3.5 : 4; // ring (r+3) + stroke must fit in ROW/2
   document.documentElement.style.setProperty('--row', ROW + 'px');
   pool.forEach((el) => (el._v = -1));
   canvasSize = '';
