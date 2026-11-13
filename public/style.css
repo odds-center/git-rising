@@ -309,14 +309,28 @@ textarea.field { min-height: 76px; resize: vertical; font-family: var(--mono); f
 .set-out:empty { display: none; }
 
 /* ---------- toasts ---------- */
-#toasts { position: fixed; right: 14px; bottom: 36px; z-index: 70; display: flex; flex-direction: column; gap: 8px; max-width: 460px; }
-.toast { display: flex; gap: 10px; align-items: flex-start; background: var(--elev); padding: 10px 12px; border-radius: 10px; box-shadow: var(--shadow); white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 260px; overflow: auto; animation: tin .16s ease-out; }
-.toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; margin-top: 4px; }
-.toast.ok .tdot { background: var(--add); }
-.toast.err .tdot { background: var(--del); }
-.toast .tbody { flex: 1; }
-.toast .tact { margin-top: 7px; display: flex; gap: 6px; }
-@keyframes tin { from { transform: translateY(6px); opacity: 0; } }
+#toasts { position: fixed; right: 14px; bottom: 38px; z-index: 70; display: flex; flex-direction: column; gap: 8px; width: min(400px, calc(100vw - 28px)); pointer-events: none; }
+.toast { pointer-events: auto; position: relative; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 11px 10px 12px 12px; border-radius: 12px; overflow: hidden;
+  background: var(--elev2); box-shadow: var(--shadow); animation: tin .18s cubic-bezier(.2,.9,.3,1.2); }
+.toast.out { opacity: 0; transform: translateX(12px); transition: opacity .15s, transform .15s; }
+.t-ic { display: flex; width: 22px; height: 22px; border-radius: 7px; align-items: center; justify-content: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.t-ic svg { width: 14px; height: 14px; stroke-width: 2.2; }
+.toast.ok .t-ic { color: var(--add); background: color-mix(in srgb, var(--add) 16%, transparent); }
+.toast.err .t-ic { color: var(--del); background: color-mix(in srgb, var(--del) 16%, transparent); }
+.t-main { min-width: 0; padding-top: 2px; }
+.t-title { font-weight: 600; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.t-body { margin: 5px 0 0; font: 11.5px/1.5 var(--mono); color: var(--text2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; user-select: text; -webkit-user-select: text;
+  background: color-mix(in srgb, var(--bg) 55%, transparent); border-radius: 7px; padding: 6px 8px; }
+.t-body.clamp { max-height: 4.6em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
+.t-more { margin-top: 4px; font-size: 11.5px; color: var(--accent); }
+.t-act { margin-top: 9px; display: flex; gap: 6px; flex-wrap: wrap; }
+.t-x { display: flex; width: 20px; height: 20px; border-radius: 6px; align-items: center; justify-content: center; color: var(--muted); }
+.t-x:hover { background: var(--active); color: var(--text); }
+.t-x svg { width: 12px; height: 12px; }
+.t-bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; transform-origin: left; background: var(--accent); opacity: .55; animation: tbar linear forwards; }
+.toast.ok .t-bar { background: var(--add); } .toast.err .t-bar { background: var(--del); }
+@keyframes tbar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes tin { from { transform: translateY(10px) scale(.97); opacity: 0; } }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--active); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
@@ -451,3 +465,36 @@ body.dropping #center::after { content: '여기에 놓으면 저장소를 열어
 .hljs-type, .hljs-built_in, .hljs-title.class_, .hljs-class .hljs-title { color: var(--sx-type); }
 .hljs-tag, .hljs-name, .hljs-selector-id, .hljs-selector-class, .hljs-deletion { color: var(--sx-tag); }
 .hljs-attr, .hljs-attribute, .hljs-property, .hljs-variable, .hljs-template-variable, .hljs-params { color: var(--sx-attr); }
+
+/* ---------- worktree hints ---------- */
+.it.in-wt svg { color: var(--mod); }
+.wt-tag { font: 10px var(--mono); color: var(--mod); background: color-mix(in srgb, var(--mod) 14%, transparent); padding: 0 5px; border-radius: 7px; line-height: 15px; flex: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+.choices { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.choice { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 10px; text-align: left; background: var(--elev2); box-shadow: inset 0 0 0 1px var(--border); }
+.choice:hover, .choice:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--sel); outline: none; }
+.choice > svg { width: 17px; height: 17px; color: var(--accent); }
+.choice span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.choice small { color: var(--muted); font-size: .88em; }
+.modal h3 { display: flex; align-items: center; gap: 7px; }
+.modal h3 svg { color: var(--mod); width: 16px; height: 16px; }
+
+/* ---------- text selection: UI chrome is not selectable, content is ---------- */
+body { user-select: none; -webkit-user-select: none; cursor: default; }
+.d-subject, .d-body, .d-meta .sha, #diff-body, .set-out, .md-body, .toast .tbody, .modal p, .opt-note code, .sheet-tbl, input, textarea, .xterm {
+  user-select: text; -webkit-user-select: text; }
+#diff-body .ln, #diff-body .mk { user-select: none; -webkit-user-select: none; }
+.pill, .row, .it, .tab, .file, img { -webkit-user-drag: none; }
+
+/* ---------- tab reordering ---------- */
+.tab.dragging { background: var(--sel); box-shadow: 0 0 0 1px var(--sel-line); opacity: .9; }
+body.tab-dragging, body.tab-dragging * { cursor: grabbing !important; }
+
+/* ---------- all refs on a commit ---------- */
+.refpop { z-index: 45; min-width: 240px; max-width: 420px; max-height: 60vh; overflow: auto; padding: 6px; }
+.rp-it { display: flex; align-items: center; gap: 10px; padding: 3px 6px; border-radius: 7px; min-height: 26px; }
+.rp-it:hover { background: var(--hover); }
+.rp-it .pill { max-width: 280px; flex: none; }
+.rp-kind { margin-left: auto; color: var(--muted); font-size: .86em; white-space: nowrap; }
+.rp-foot { padding: 5px 8px 2px; color: var(--dim); font-size: .82em; border-top: 1px solid var(--border); margin-top: 4px; }
+.more { cursor: pointer; padding: 1px 5px; border-radius: 8px; background: var(--active); color: var(--text2); font-weight: 600; }
+.more:hover { background: var(--sel); color: var(--accent); }

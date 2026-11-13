@@ -101,6 +101,9 @@ const ICONS = {
   'file-audio': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="10" cy="17" r="2"/><path d="M12 17v-6l3 1"/>',
   'file-archive': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 7V6M10 12v-1M10 18v-2"/>',
   'file-json': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/><path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"/>',
+  'check-circle': '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
   bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/>',
 };
 const icon = (n) => `<svg class="i" viewBox="0 0 24 24">${ICONS[n] || ''}</svg>`;
@@ -122,20 +125,41 @@ async function post(p, params, body) {
 }
 
 function toast(msg, kind = '', actions = []) {
+  msg = String(msg ?? '');
+  for (const old of $('#toasts').children) if (old.dataset.msg === msg) old.remove();
+  const nl = msg.indexOf('\n');
+  const title = (nl === -1 ? msg : msg.slice(0, nl)).trim();
+  const body = nl === -1 ? '' : msg.slice(nl + 1).trim();
+  const long = body.split('\n').length > 4 || body.length > 260;
   const t = document.createElement('div');
-  t.className = 'toast ' + kind;
-  t.innerHTML = `<span class="tdot"></span><div class="tbody"><div></div>${actions.length ? '<div class="tact"></div>' : ''}</div>`;
-  t.querySelector('.tbody > div').textContent = msg;
+  t.className = 'toast ' + (kind || 'info');
+  t.dataset.msg = msg;
+  t.innerHTML = `<span class="t-ic">${icon(kind === 'ok' ? 'check-circle' : kind === 'err' ? 'alert' : 'info')}</span>
+    <div class="t-main"><div class="t-title"></div>${body ? `<pre class="t-body${long ? ' clamp' : ''}"></pre>${long ? '<button class="t-more">자세히</button>' : ''}` : ''}${actions.length ? '<div class="t-act"></div>' : ''}</div>
+    <button class="t-x" title="닫기">${icon('x')}</button><span class="t-bar"></span>`;
+  t.querySelector('.t-title').textContent = title;
+  if (body) t.querySelector('.t-body').textContent = body;
+  const close = () => { t.classList.add('out'); setTimeout(() => t.remove(), 160); };
+  t.querySelector('.t-more')?.addEventListener('click', (e) => { const b = t.querySelector('.t-body'); b.classList.toggle('clamp'); e.target.textContent = b.classList.contains('clamp') ? '자세히' : '접기'; stop(); });
   for (const a of actions) {
     const b = document.createElement('button');
     b.className = 'btn sm' + (a.primary ? ' primary' : '');
     b.textContent = a.label;
-    b.onclick = (e) => { e.stopPropagation(); t.remove(); a.run(); };
-    t.querySelector('.tact').append(b);
+    b.onclick = () => { close(); a.run(); };
+    t.querySelector('.t-act').append(b);
   }
-  t.onclick = () => t.remove();
-  $('#toasts').append(t);
-  setTimeout(() => t.remove(), kind === 'err' || actions.length ? 14000 : 3200);
+  t.querySelector('.t-x').onclick = close;
+  // auto-dismiss with a visible countdown; hovering (or expanding) keeps it open
+  const ms = kind === 'err' ? 12000 : actions.length ? 9000 : body ? 5000 : 2800;
+  const bar = t.querySelector('.t-bar');
+  bar.style.animationDuration = ms + 'ms';
+  let timer = setTimeout(close, ms);
+  const stop = () => { clearTimeout(timer); timer = null; bar.style.display = 'none'; };
+  t.onmouseenter = stop;
+  t.onmouseleave = () => { if (!timer && !t.querySelector('.t-body:not(.clamp)')) timer = setTimeout(close, 2500); };
+  const box = $('#toasts');
+  box.append(t);
+  while (box.children.length > 4) box.firstElementChild.remove();
 }
 const p2 = (n) => String(n).padStart(2, '0');
 function fmtDate(sec) { const d = new Date(sec * 1000); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; }
@@ -408,7 +432,7 @@ function fillRow(el, v) {
     const labels = refLabels(c.sha);
     if (labels.length) {
       ref = pillHTML(labels[0], col);
-      if (labels.length > 1) ref += `<span class="more" title="${esc(labels.slice(1).map((l) => l.name).join('\n'))}">+${labels.length - 1}</span>`;
+      if (labels.length > 1) ref += `<span class="more">+${labels.length - 1}</span>`;
     }
   }
   el.innerHTML = c.wip
@@ -551,6 +575,45 @@ function drawGraph(first, last) {
     g.beginPath(); g.moveTo(x0 - 2, Y(v)); g.lineTo(X(col) - NODE_R - 2, Y(v)); g.stroke();
   }
   g.globalAlpha = 1;
+}
+
+// ================================================================ popover: every branch / tag on a commit
+let refPopTimer = null;
+function hideRefPop() { clearTimeout(refPopTimer); $('#refpop')?.remove(); }
+function showRefPop(rowEl) {
+  const c = rowAt(+rowEl.dataset.v);
+  if (!c || c.wip) return;
+  const labels = refLabels(c.sha);
+  if (labels.length < 2) return;
+  hideRefPop();
+  const col = laneColor(S.L.rows[+rowEl.dataset.v - S.off].col);
+  const pop = document.createElement('div');
+  pop.id = 'refpop';
+  pop.className = 'menu refpop';
+  pop.innerHTML = `<div class="mhead">이 커밋의 브랜치 · 태그 ${labels.length}개</div>` + labels.map((l) => {
+    const wt = l.type === 'branch' ? otherWorktree(l.name) : null;
+    const kind = l.type === 'tag' ? '태그' : l.type === 'remote' ? '원격' : l.name === S.info?.branch ? '현재' : l.remotes?.length ? '로컬 + 원격' : '로컬';
+    return `<div class="rp-it" data-ref="${esc(l.type)}:${esc(l.name)}">${pillHTML(l, col)}<span class="rp-kind">${kind}${wt ? ' · 워크트리 ' + esc(wt.path.split(/[\\/]/).pop()) : ''}</span></div>`;
+  }).join('') + '<div class="rp-foot">더블클릭 전환 · 우클릭 작업</div>';
+  document.body.append(pop);
+  const r = rowEl.querySelector('.c-ref').getBoundingClientRect(), pr = pop.getBoundingClientRect();
+  pop.style.left = Math.max(6, Math.min(r.left + 4, innerWidth - pr.width - 6)) + 'px';
+  pop.style.top = (r.bottom + pr.height + 4 > innerHeight ? r.top - pr.height - 2 : r.bottom + 2) + 'px';
+  pop.onmouseenter = () => clearTimeout(refPopTimer);
+  pop.onmouseleave = () => { refPopTimer = setTimeout(hideRefPop, 180); };
+  pop.ondblclick = (e) => {
+    const it = e.target.closest('[data-ref]'); if (!it) return;
+    const ref = findRef(it.dataset.ref); hideRefPop();
+    if (ref && ref.type !== 'tag' && !(ref.type === 'branch' && ref.name === S.info?.branch)) run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 전환` });
+  };
+  pop.oncontextmenu = (e) => {
+    const it = e.target.closest('[data-ref]'); if (!it) return;
+    e.preventDefault();
+    let ref = findRef(it.dataset.ref);
+    if (ref?.type === 'branch') ref = refLabels(ref.sha).find((l) => l.type === 'branch' && l.name === ref.name) || ref;
+    hideRefPop();
+    if (ref) showMenu(refMenu(ref), e.clientX, e.clientY);
+  };
 }
 
 // ================================================================ selection / detail
@@ -945,8 +1008,9 @@ function renderSidebar() {
   const pad = (d) => `padding-left:${8 + d * 13}px`;
   const leaf = (r, label, d) => {
     const isHead = r.type === 'branch' && r.name === head;
-    const ic = r.type === 'tag' ? 'tag' : isHead ? 'check' : 'branch';
-    return `<div class="it${isHead ? ' head' : ''}${S.selected === r.sha ? ' selected' : ''}" style="${pad(d)}" data-ref="${esc(r.type)}:${esc(r.name)}" title="${esc(r.name)}">${icon(ic)}<span class="nm">${escN(label)}</span>${r.type === 'branch' ? trackHTML(r.track) : ''}</div>`;
+    const wt = r.type === 'branch' && !isHead ? otherWorktree(r.name) : null;
+    const ic = r.type === 'tag' ? 'tag' : isHead ? 'check' : wt ? 'layers' : 'branch';
+    return `<div class="it${isHead ? ' head' : ''}${wt ? ' in-wt' : ''}${S.selected === r.sha ? ' selected' : ''}" style="${pad(d)}" data-ref="${esc(r.type)}:${esc(r.name)}" title="${esc(r.name)}${wt ? '\n다른 워크트리에서 사용 중: ' + esc(tilde(wt.path)) : ''}">${icon(ic)}<span class="nm">${escN(label)}</span>${wt ? `<span class="wt-tag">${esc(wt.path.split(/[\\/]/).pop())}</span>` : ''}${r.type === 'branch' ? trackHTML(r.track) : ''}</div>`;
   };
   const tree = (node, d, kp) => {
     let h = '';
@@ -1043,7 +1107,39 @@ async function pickRepo() { try { const r = await post('pick', {}, {}); if (r.pa
 
 // ================================================================ actions
 const AUTH_RE = /permission denied \(publickey\)|authentication failed|could not read (username|password)|host key verification failed|terminal prompts disabled|repository not found|could not read from remote/i;
+// A branch can only be checked out in one worktree at a time (git rule).
+const otherWorktree = (branch) => (S.meta.worktrees || []).find((w) => w.branch === branch && w.path !== S.info?.path);
+async function worktreeChoice(branch, wtPath) {
+  const sha = S.refs.find((r) => r.type === 'branch' && r.name === branch)?.sha;
+  closeModal();
+  const L = $('#modal-layer');
+  L.hidden = false;
+  L.innerHTML = `<div class="modal"><h3>${icon('layers')} '${esc(branch)}' 는 다른 워크트리에서 사용 중이에요</h3>
+    <p>${esc(tilde(wtPath))}\n\ngit 은 같은 브랜치를 두 워크트리에서 동시에 체크아웃할 수 없어요. 어떻게 할까요?</p>
+    <div class="choices">
+      <button class="choice" data-c="open">${icon('external')}<span><b>그 워크트리를 탭으로 열기</b><small>${esc(wtPath.split(/[\\/]/).pop())} 에서 ${esc(branch)} 작업을 이어갑니다</small></span></button>
+      ${sha ? `<button class="choice" data-c="detach">${icon('commit')}<span><b>여기서는 그 커밋만 보기 (detached)</b><small>${esc(branch)} 가 가리키는 ${sha.slice(0, 7)} 로 이동 — 브랜치는 그대로 둡니다</small></span></button>
+      <button class="choice" data-c="branch">${icon('branch-plus')}<span><b>${esc(branch)} 에서 새 브랜치 만들기</b><small>같은 위치에서 다른 이름으로 작업합니다</small></span></button>` : ''}
+    </div><div class="btns"><button class="btn" id="m-cancel">취소</button></div></div>`;
+  modalResolve = () => {};
+  L.onmousedown = (e) => { if (e.target === L) closeModal(); };
+  L.onkeydown = (e) => { if (e.key === 'Escape') closeModal(); };
+  $('#m-cancel').onclick = () => closeModal();
+  L.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => {
+    closeModal();
+    if (b.dataset.c === 'open') openTab(wtPath);
+    if (b.dataset.c === 'detach') run('checkout', { ref: sha, kind: 'commit' }, { label: `${branch} 위치로 이동` });
+    if (b.dataset.c === 'branch') newBranch(sha);
+  }));
+  L.querySelector('[data-c]')?.focus();
+}
+
 async function run(action, args = {}, { label, quiet, noUndo } = {}) {
+  if (action === 'checkout' && args.kind !== 'commit') {
+    const local = args.kind === 'remote' ? args.ref.slice(args.ref.indexOf('/') + 1) : args.ref;
+    const wt = otherWorktree(local);
+    if (wt) { worktreeChoice(local, wt.path); return false; }
+  }
   const btn = document.querySelector(`[data-act="${action}"]`);
   btn?.classList.add('busy');
   const before = snapshotState();
@@ -1057,6 +1153,8 @@ async function run(action, args = {}, { label, quiet, noUndo } = {}) {
     return true;
   } catch (e) {
     const auth = AUTH_RE.test(e.message);
+    const wtm = e.message.match(/'([^']+)' is already (?:used by|checked out at) worktree at '([^']+)'/) || e.message.match(/'([^']+)' is already checked out at '([^']+)'/);
+    if (wtm) { worktreeChoice(wtm[1], wtm[2]); return false; }
     const hint = /repository not found/i.test(e.message) ? '\n\n→ 원격 주소가 바뀌었거나, 이 저장소에 권한이 없는 계정/키로 접속했을 수 있어요.' : '';
     toast((label || action) + ' 실패\n' + e.message.slice(0, 900) + hint, 'err', auth ? [{ label: '원격 · 연결 설정', primary: true, run: () => openSettings('remote') }] : []);
     return false;
@@ -1215,6 +1313,8 @@ function branchItems(ref) {
   if (!isCur && cur) items.push({ label: `${cur} 를 ${name} 로 리셋`, hint: 'reset', sub: resetSub(ref.type === 'tag' ? ref.sha : name, name) });
   if (items.length) items.push('-');
   if (!isCur) {
+    const wt = ref.type === 'branch' ? otherWorktree(name) : null;
+    if (wt) items.push({ label: `워크트리 열기 (${wt.path.split(/[\\/]/).pop()})`, icon: 'layers', tip: `${name} 는 이 워크트리에서 사용 중이에요: ${tilde(wt.path)}`, run: () => openTab(wt.path) });
     if (ref.type === 'branch') items.push({ label: `${name} 로 전환`, hint: 'checkout', run: () => run('checkout', { ref: name, kind: 'branch' }, { label: `${name} 전환` }) });
     else if (ref.type === 'remote') items.push({ label: `${name} 를 로컬로 받아 전환`, hint: 'checkout --track', run: () => run('checkout', { ref: name, kind: 'remote' }, { label: `${name} 전환` }) });
     else items.push({ label: `태그 ${name} 로 이동 (detached)`, hint: 'checkout', run: () => run('checkout', { ref: ref.sha, kind: 'commit' }, { label: '이동' }) });
@@ -1693,6 +1793,27 @@ function bind() {
   sc.addEventListener('scroll', renderRows, { passive: true });
   new ResizeObserver(() => { canvasSize = ''; renderRows(); }).observe(sc);
   const rows = $('#rows');
+  // hover (or click) the ref cell of a commit with several branches/tags → list them all
+  rows.addEventListener('mouseover', (e) => {
+    const cell = e.target.closest('.c-ref');
+    if (!cell || !cell.querySelector('.more')) return;
+    clearTimeout(refPopTimer);
+    const row = cell.closest('.row');
+    if ($('#refpop')?.dataset.v === row.dataset.v) return;
+    refPopTimer = setTimeout(() => { showRefPop(row); const p = $('#refpop'); if (p) p.dataset.v = row.dataset.v; }, 280);
+  });
+  rows.addEventListener('mouseout', (e) => {
+    if (!e.target.closest('.c-ref')) return;
+    if (e.relatedTarget?.closest?.('#refpop, .c-ref')) return;
+    clearTimeout(refPopTimer);
+    refPopTimer = setTimeout(hideRefPop, 220);
+  });
+  rows.addEventListener('click', (e) => {
+    const more = e.target.closest('.more'); if (!more) return;
+    const row = more.closest('.row');
+    showRefPop(row); const p = $('#refpop'); if (p) p.dataset.v = row.dataset.v;
+  });
+  sc.addEventListener('scroll', hideRefPop, { passive: true });
   rows.addEventListener('mousedown', (e) => { const r = e.target.closest('.row'); if (r && e.button === 0) { selectCommit(rowAt(+r.dataset.v).sha, { scroll: false }); sc.focus(); } });
   rows.addEventListener('dblclick', (e) => {
     const p = e.target.closest('[data-ref]'); if (!p) return;
@@ -1732,11 +1853,38 @@ function bind() {
   $('#sb-filter').addEventListener('input', debounce(renderSidebar, 80));
   $('#sb-repo').onclick = () => openPalette('repos');
   $('#sb-branch').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); branchChipMenu(r.left, r.bottom + 4); };
+  // tabs: click to switch, middle-click to close, drag to reorder
+  let tabDrag = null;
   $('#tab-list').addEventListener('mousedown', (e) => {
     const x = e.target.closest('[data-close]'); if (x) { e.stopPropagation(); return closeTab(x.dataset.close); }
     const t = e.target.closest('[data-tab]');
-    if (t && e.button === 1) return closeTab(t.dataset.tab);
-    if (t && t.dataset.tab !== S.repo) loadRepo(t.dataset.tab).then(() => { saveTabs(); renderTabs(); });
+    if (!t) return;
+    if (e.button === 1) return closeTab(t.dataset.tab);
+    if (e.button === 0) tabDrag = { path: t.dataset.tab, x: e.clientX, moved: false };
+  });
+  addEventListener('mousemove', (e) => {
+    if (!tabDrag) return;
+    if (!tabDrag.moved && Math.abs(e.clientX - tabDrag.x) < 6) return;
+    tabDrag.moved = true;
+    document.body.classList.add('tab-dragging');
+    const over = [...document.querySelectorAll('#tab-list [data-tab]')].find((el) => { const r = el.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right; });
+    if (over && over.dataset.tab !== tabDrag.path) {
+      const from = S.tabs.indexOf(tabDrag.path), to = S.tabs.indexOf(over.dataset.tab);
+      const r = over.getBoundingClientRect(), mid = r.left + r.width / 2;
+      // only swap once the pointer passes the neighbour's middle → no flicker between two tabs of different width
+      if ((from < to && e.clientX > mid) || (from > to && e.clientX < mid)) {
+        S.tabs.splice(to, 0, S.tabs.splice(from, 1)[0]);
+        renderTabs();
+      }
+    }
+    document.querySelectorAll('#tab-list [data-tab]').forEach((el) => el.classList.toggle('dragging', el.dataset.tab === tabDrag.path));
+  });
+  addEventListener('mouseup', () => {
+    if (!tabDrag) return;
+    const d = tabDrag; tabDrag = null;
+    document.body.classList.remove('tab-dragging');
+    if (d.moved) { saveTabs(); renderTabs(); return; }
+    if (d.path !== S.repo) loadRepo(d.path).then(() => { saveTabs(); renderTabs(); });
   });
   $('#tab-add').innerHTML = icon('plus');
   $('#tab-add').onclick = () => openPalette('repos');
@@ -1808,7 +1956,7 @@ function bind() {
     post('action', { repo: S.repo }, { action: 'fetch', args: { prune: P.fetchPrune } }).catch(() => {});
   }, 30000);
 
-  document.addEventListener('mousedown', (e) => { if (!e.target.closest?.('.menu')) closeMenus(); });
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest?.('.menu')) closeMenus(); if (!e.target.closest?.('#refpop, .more')) hideRefPop(); });
   window.addEventListener('blur', closeMenus);
   document.addEventListener('keydown', (e) => {
     if (!$('#modal-layer').hidden) return;
