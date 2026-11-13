@@ -452,7 +452,7 @@ function pillHTML(r, color) {
   const ic = r.type === 'tag' ? icon('tag') : isHead ? icon('check') : r.type === 'remote' ? icon('cloud') : '';
   const cloud = r.type === 'branch' && r.remotes?.length ? icon('cloud') : '';
   const tip = [r.type === 'tag' ? '태그 ' + r.name : r.name, ...(r.remotes || []).filter((x) => x !== r.name)].join('\n');
-  return `<span class="pill ${r.type}${isHead ? ' head' : ''}" style="--pc:${color}" data-ref="${esc(r.type)}:${esc(r.name)}" title="${esc(tip)}">${ic}<span class="t">${escN(r.name)}</span>${cloud}</span>`;
+  return `<span class="pill ${r.type}${isHead ? ' head' : ''}" style="--pc:${color}" data-ref="${esc(r.type)}:${esc(r.name)}">${ic}<span class="t">${escN(r.name)}</span>${cloud}</span>`;
 }
 const pool = [];
 let poolSize = 0;
@@ -616,17 +616,18 @@ function showRefPop(rowEl) {
   const c = rowAt(+rowEl.dataset.v);
   if (!c || c.wip) return;
   const labels = refLabels(c.sha);
-  if (labels.length < 2) return;
+  if (!labels.length) return;
   hideRefPop();
   const col = laneColor(S.L.rows[+rowEl.dataset.v - S.off].col);
   const pop = document.createElement('div');
   pop.id = 'refpop';
   pop.className = 'menu refpop';
-  pop.innerHTML = `<div class="mhead">이 커밋의 브랜치 · 태그 ${labels.length}개</div>` + labels.map((l) => {
+  pop.innerHTML = (labels.length > 1 ? `<div class="mhead">이 커밋의 브랜치 · 태그 ${labels.length}개</div>` : '') + labels.map((l) => {
     const wt = l.type === 'branch' ? otherWorktree(l.name) : null;
     const kind = l.type === 'tag' ? '태그' : l.type === 'remote' ? '원격' : l.name === S.info?.branch ? '현재' : l.remotes?.length ? '로컬 + 원격' : '로컬';
     return `<div class="rp-it" data-ref="${esc(l.type)}:${esc(l.name)}">${pillHTML(l, col)}<span class="rp-kind">${kind}${wt ? ' · 워크트리 ' + esc(wt.path.split(/[\\/]/).pop()) : ''}</span></div>`;
-  }).join('') + '<div class="rp-foot">더블클릭 전환 · 우클릭 작업</div>';
+  }).join('') + '<div class="rp-foot">더블클릭 전환 · 우클릭 작업 · 클릭하면 이름 복사</div>';
+  pop.onclick = (e) => { const it = e.target.closest('[data-ref]'); if (it) copy(it.dataset.ref.slice(it.dataset.ref.indexOf(':') + 1)); };
   document.body.append(pop);
   const r = rowEl.querySelector('.c-ref').getBoundingClientRect(), pr = pop.getBoundingClientRect();
   pop.style.left = Math.max(6, Math.min(r.left + 4, innerWidth - pr.width - 6)) + 'px';
@@ -2108,7 +2109,10 @@ function bind() {
   // hover (or click) the ref cell of a commit with several branches/tags → list them all
   rows.addEventListener('mouseover', (e) => {
     const cell = e.target.closest('.c-ref');
-    if (!cell || !cell.querySelector('.more')) return;
+    if (!cell) return;
+    const t = cell.querySelector('.pill .t');
+    const cut = t && t.scrollWidth > t.clientWidth + 1; // name is shown with …
+    if (!cell.querySelector('.more') && !cut) return;
     clearTimeout(refPopTimer);
     const row = cell.closest('.row');
     if ($('#refpop')?.dataset.v === row.dataset.v) return;
@@ -2121,7 +2125,7 @@ function bind() {
     refPopTimer = setTimeout(hideRefPop, 220);
   });
   rows.addEventListener('click', (e) => {
-    const more = e.target.closest('.more'); if (!more) return;
+    const more = e.target.closest('.more, .c-ref .pill'); if (!more) return;
     const row = more.closest('.row');
     showRefPop(row); const p = $('#refpop'); if (p) p.dataset.v = row.dataset.v;
   });
@@ -2282,7 +2286,7 @@ function bind() {
     post('action', { repo: S.repo }, { action: 'fetch', args: { prune: P.fetchPrune } }).catch(() => {});
   }, 30000);
 
-  document.addEventListener('mousedown', (e) => { if (!e.target.closest?.('.menu')) closeMenus(); if (!e.target.closest?.('#refpop, .more')) hideRefPop(); });
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest?.('.menu')) closeMenus(); if (!e.target.closest?.('#refpop, .more, .c-ref .pill')) hideRefPop(); });
   window.addEventListener('blur', closeMenus);
   document.addEventListener('keydown', (e) => {
     if (!$('#modal-layer').hidden) return;

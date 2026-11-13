@@ -643,3 +643,10 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
 .st-clear svg { width: 11px; height: 11px; }
 .st-clear:hover { color: #fff; background: var(--del); }
 .st-hint { margin-left: auto; }
+
+/* full names in the ref popover: never truncated, long names wrap */
+.refpop { max-width: min(640px, 80vw); }
+.rp-it { cursor: default; }
+.rp-it .pill { max-width: none; height: auto; min-height: 20px; padding: 2px 9px; flex: 0 1 auto; }
+.rp-it .pill .t { white-space: normal; overflow: visible; word-break: break-all; }
+.rp-kind { padding-left: 14px; }
