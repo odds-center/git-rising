@@ -234,7 +234,14 @@ async function apiRepo(q) {
     branch = (await git(repo, ['symbolic-ref', '-q', '--short', 'HEAD'])).trim() || null;
   } catch {}
   const head = (await hasHead(repo)) ? (await git(repo, ['rev-parse', 'HEAD'])).trim() : null;
-  return { path: repo, name: path.basename(repo), branch, head };
+  // linked worktree? (its git dir lives under <main>/.git/worktrees/<name>)
+  let worktree = false, main = null;
+  try {
+    const gd = path.resolve(repo, (await git(repo, ['rev-parse', '--git-dir'])).trim());
+    const cd = path.resolve(repo, (await git(repo, ['rev-parse', '--git-common-dir'])).trim());
+    if (gd !== cd) { worktree = true; main = path.basename(cd) === '.git' ? path.dirname(cd) : cd; }
+  } catch {}
+  return { path: repo, name: path.basename(repo), branch, head, worktree, main };
 }
 
 async function apiLog(q) {
@@ -550,16 +557,29 @@ async function apiClone(_q, body) {
 }
 
 const actions = {
-  async checkout(repo, { ref, kind }) {
+  async checkout(repo, { ref, kind, mode }) {
     if (kind === 'remote') {
       // origin/feat/x -> local feat/x tracking it
       const remote = ref.split('/')[0];
       const local = ref.slice(remote.length + 1);
       await checkBranchName(repo, local);
       const exists = await git(repo, ['show-ref', '--verify', '-q', `refs/heads/${local}`]).then(() => true, () => false);
-      if (exists) return git(repo, ['checkout', local]);
-      await checkRev(repo, ref);
-      return git(repo, ['checkout', '-b', local, '--track', ref]);
+      const remoteSha = await checkRev(repo, ref);
+      if (!exists) return git(repo, ['checkout', '-b', local, '--track', ref]);
+      // A local branch of that name exists. The user clicked the *remote* position, so land there:
+      const localSha = (await git(repo, ['rev-parse', `refs/heads/${local}`])).trim();
+      const isAncestor = (a, b) => git(repo, ['merge-base', '--is-ancestor', a, b]).then(() => true, () => false);
+      if (mode === 'detach') return git(repo, ['checkout', '--detach', remoteSha]);
+      if (mode === 'local' || localSha === remoteSha) return git(repo, ['checkout', local]);
+      if (mode === 'reset') { await git(repo, ['checkout', local]); return git(repo, ['reset', '--hard', remoteSha]); }
+      if (await isAncestor(localSha, remoteSha)) { // local is only behind → fast-forward it
+        await git(repo, ['checkout', local]);
+        await git(repo, ['merge', '--ff-only', ref]);
+        return `${local} 를 ${ref} 위치까지 빨리감기했어요 (${localSha.slice(0, 7)} → ${remoteSha.slice(0, 7)})`;
+      }
+      const ahead = (await git(repo, ['rev-list', '--count', `${remoteSha}..${localSha}`])).trim();
+      const behind = (await git(repo, ['rev-list', '--count', `${localSha}..${remoteSha}`])).trim();
+      throw httpError(409, 'DIVERGED ' + JSON.stringify({ local, remote: ref, ahead: +ahead, behind: +behind }));
     }
     if (kind === 'branch') return git(repo, ['checkout', await checkBranchName(repo, ref)]);
     return git(repo, ['checkout', '--detach', await checkRev(repo, ref)]);

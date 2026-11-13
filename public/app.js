@@ -29,7 +29,7 @@ const PREF_DEF = {
   theme: LS.get('theme', 'dark'), accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
   avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
   autoFetch: LS.get('autoFetch', false) ? 5 : 0, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
-  termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
+  worktreeGuard: true, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
 };
 const P = Object.assign({}, PREF_DEF, LS.get('prefs', {}));
 // one-time: profile photos / avatars became the default in 0.2.1
@@ -126,40 +126,35 @@ async function post(p, params, body) {
 
 function toast(msg, kind = '', actions = []) {
   msg = String(msg ?? '');
-  for (const old of $('#toasts').children) if (old.dataset.msg === msg) old.remove();
+  const box = $('#toasts');
+  for (const old of box.children) if (old.dataset.msg === msg) old.remove();
   const nl = msg.indexOf('\n');
   const title = (nl === -1 ? msg : msg.slice(0, nl)).trim();
   const body = nl === -1 ? '' : msg.slice(nl + 1).trim();
-  const long = body.split('\n').length > 4 || body.length > 260;
   const t = document.createElement('div');
   t.className = 'toast ' + (kind || 'info');
   t.dataset.msg = msg;
-  t.innerHTML = `<span class="t-ic">${icon(kind === 'ok' ? 'check-circle' : kind === 'err' ? 'alert' : 'info')}</span>
-    <div class="t-main"><div class="t-title"></div>${body ? `<pre class="t-body${long ? ' clamp' : ''}"></pre>${long ? '<button class="t-more">자세히</button>' : ''}` : ''}${actions.length ? '<div class="t-act"></div>' : ''}</div>
-    <button class="t-x" title="닫기">${icon('x')}</button><span class="t-bar"></span>`;
+  t.innerHTML = `<span class="t-ic">${icon(kind === 'ok' ? 'check-circle' : kind === 'err' ? 'alert' : 'info')}</span><span class="t-title"></span>
+    ${actions.map((a, i) => `<button class="t-btn${a.primary ? ' primary' : ''}" data-a="${i}">${esc(a.label)}</button>`).join('')}
+    <button class="t-x" title="닫기">${icon('x')}</button>
+    ${body ? `<button class="t-body" title="눌러서 펼치기 / 접기"><span></span>${icon('chev-down')}</button>` : ''}`;
   t.querySelector('.t-title').textContent = title;
-  if (body) t.querySelector('.t-body').textContent = body;
-  const close = () => { t.classList.add('out'); setTimeout(() => t.remove(), 160); };
-  t.querySelector('.t-more')?.addEventListener('click', (e) => { const b = t.querySelector('.t-body'); b.classList.toggle('clamp'); e.target.textContent = b.classList.contains('clamp') ? '자세히' : '접기'; stop(); });
-  for (const a of actions) {
-    const b = document.createElement('button');
-    b.className = 'btn sm' + (a.primary ? ' primary' : '');
-    b.textContent = a.label;
-    b.onclick = () => { close(); a.run(); };
-    t.querySelector('.t-act').append(b);
+  const close = () => { t.classList.add('out'); setTimeout(() => t.remove(), 170); };
+  let timer = null;
+  const arm = (ms) => { clearTimeout(timer); timer = setTimeout(close, ms); };
+  const hold = () => { clearTimeout(timer); timer = null; };
+  if (body) {
+    const b = t.querySelector('.t-body');
+    b.firstElementChild.textContent = body;
+    b.onclick = () => { t.classList.toggle('open'); hold(); };
   }
+  t.querySelectorAll('[data-a]').forEach((b) => (b.onclick = () => { close(); actions[+b.dataset.a].run(); }));
   t.querySelector('.t-x').onclick = close;
-  // auto-dismiss with a visible countdown; hovering (or expanding) keeps it open
-  const ms = kind === 'err' ? 12000 : actions.length ? 9000 : body ? 5000 : 2800;
-  const bar = t.querySelector('.t-bar');
-  bar.style.animationDuration = ms + 'ms';
-  let timer = setTimeout(close, ms);
-  const stop = () => { clearTimeout(timer); timer = null; bar.style.display = 'none'; };
-  t.onmouseenter = stop;
-  t.onmouseleave = () => { if (!timer && !t.querySelector('.t-body:not(.clamp)')) timer = setTimeout(close, 2500); };
-  const box = $('#toasts');
+  t.onmouseenter = hold;
+  t.onmouseleave = () => { if (!t.classList.contains('open')) arm(1800); };
   box.append(t);
-  while (box.children.length > 4) box.firstElementChild.remove();
+  while (box.children.length > 3) box.firstElementChild.remove();
+  arm(kind === 'err' ? 9000 : actions.length ? 7000 : body ? 4500 : 2400);
 }
 const p2 = (n) => String(n).padStart(2, '0');
 function fmtDate(sec) { const d = new Date(sec * 1000); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; }
@@ -604,6 +599,7 @@ function showRefPop(rowEl) {
   pop.ondblclick = (e) => {
     const it = e.target.closest('[data-ref]'); if (!it) return;
     const ref = findRef(it.dataset.ref); hideRefPop();
+    if (S.info?.worktree && P.worktreeGuard) { if (ref) selectCommit(ref.sha); return; }
     if (ref && ref.type !== 'tag' && !(ref.type === 'branch' && ref.name === S.info?.branch)) run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 전환` });
   };
   pop.oncontextmenu = (e) => {
@@ -1046,7 +1042,7 @@ function renderSidebar() {
 
   // header
   $('#sb-repo-name').textContent = S.info?.name || '—';
-  $('#sb-repo-path').textContent = S.info ? tilde(S.info.path) : '';
+  $('#sb-repo-path').innerHTML = S.info ? (S.info.worktree ? `<span class="wt-chip" title="${esc(tilde(S.info.main || ''))} 의 워크트리 — 브랜치를 둘러봐도 이 워크트리의 체크아웃은 바뀌지 않아요">${icon('layers')}워크트리</span>` : '') + esc(tilde(S.info.path)) : '';
   if (S.info && $('#sb-repo .repo-ic')?.dataset.repo !== S.info.path + P.repoLogos) { $('#sb-repo .repo-ic').outerHTML = logoHTML(S.info.path); $('#sb-repo .repo-ic').dataset.repo = S.info.path + P.repoLogos; }
   const cur = local.find((r) => r.name === head);
   $('#sb-branch').innerHTML = `${icon('branch')}<span class="nm">${esc(head || (S.info?.head ? 'detached ' + S.info.head.slice(0, 7) : '—'))}</span>${cur ? trackHTML(cur.track) : ''}${icon('chev-down')}`;
@@ -1107,6 +1103,26 @@ async function pickRepo() { try { const r = await post('pick', {}, {}); if (r.pa
 
 // ================================================================ actions
 const AUTH_RE = /permission denied \(publickey\)|authentication failed|could not read (username|password)|host key verification failed|terminal prompts disabled|repository not found|could not read from remote/i;
+// Clicked origin/x while local x has commits of its own: don't guess — ask where to land.
+function divergedChoice(d, args, label) {
+  closeModal();
+  const L = $('#modal-layer');
+  L.hidden = false;
+  L.innerHTML = `<div class="modal"><h3>${icon('alert')} ${d.behind ? `${esc(d.local)} 와 ${esc(d.remote)} 가 갈라져 있어요` : `로컬 ${esc(d.local)} 가 ${esc(d.remote)} 보다 앞서 있어요`}</h3>
+    <p>로컬 ${esc(d.local)} 에만 있는 커밋 ${d.ahead}개 · ${esc(d.remote)} 에만 있는 커밋 ${d.behind}개\n어디로 갈까요?</p>
+    <div class="choices">
+      <button class="choice" data-c="detach">${icon('eye')}<span><b>${esc(d.remote)} 위치로 이동 (보기만)</b><small>브랜치는 건드리지 않고 그 커밋을 꺼냅니다 (detached)</small></span></button>
+      <button class="choice" data-c="local">${icon('checkout')}<span><b>로컬 ${esc(d.local)} 로 전환</b><small>로컬 브랜치 위치 그대로 — 이후 풀/리베이스로 맞출 수 있어요</small></span></button>
+      <button class="choice danger" data-c="reset">${icon('rotate')}<span><b>로컬 ${esc(d.local)} 을 ${esc(d.remote)} 과 똑같이</b><small>reset --hard — 로컬에만 있는 커밋 ${d.ahead}개가 사라집니다</small></span></button>
+    </div><div class="btns"><button class="btn" id="m-cancel">취소</button></div></div>`;
+  modalResolve = () => {};
+  L.onmousedown = (e) => { if (e.target === L) closeModal(); };
+  L.onkeydown = (e) => { if (e.key === 'Escape') closeModal(); };
+  $('#m-cancel').onclick = () => closeModal();
+  L.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => { closeModal(); run('checkout', { ...args, mode: b.dataset.c }, { label, force: true }); }));
+  L.querySelector('[data-c]')?.focus();
+}
+
 // A branch can only be checked out in one worktree at a time (git rule).
 const otherWorktree = (branch) => (S.meta.worktrees || []).find((w) => w.branch === branch && w.path !== S.info?.path);
 async function worktreeChoice(branch, wtPath) {
@@ -1134,7 +1150,37 @@ async function worktreeChoice(branch, wtPath) {
   L.querySelector('[data-c]')?.focus();
 }
 
-async function run(action, args = {}, { label, quiet, noUndo } = {}) {
+// In a worktree tab, switching branches changes what that worktree folder has checked out.
+// A worktree is meant to stay on its branch, so never do it implicitly — ask.
+async function worktreeGuard(args, label) {
+  const name = args.kind === 'commit' ? args.ref.slice(0, 7) : args.ref;
+  const wtName = S.info.path.split(/[\\/]/).pop(), mainName = (S.info.main || '').split(/[\\/]/).pop();
+  closeModal();
+  const L = $('#modal-layer');
+  L.hidden = false;
+  L.innerHTML = `<div class="modal"><h3>${icon('layers')} 이 탭은 워크트리예요</h3>
+    <p>${esc(tilde(S.info.path))}\n현재 브랜치: ${esc(S.info.branch || 'detached')}\n\n여기서 전환하면 이 워크트리 폴더의 체크아웃이 ${esc(name)} 로 바뀝니다.</p>
+    <div class="choices">
+      ${S.info.main ? `<button class="choice" data-c="main">${icon('external')}<span><b>원래 저장소(${esc(mainName)})에서 전환</b><small>워크트리는 그대로 두고, 원래 저장소 탭을 열어 거기서 ${esc(name)} 로 전환합니다</small></span></button>` : ''}
+      <button class="choice" data-c="view">${icon('eye')}<span><b>전환하지 않고 보기만</b><small>그래프에서 ${esc(name)} 위치로 이동만 합니다</small></span></button>
+      <button class="choice" data-c="here">${icon('checkout')}<span><b>이 워크트리(${esc(wtName)})를 ${esc(name)} 로 전환</b><small>워크트리의 브랜치가 바뀝니다</small></span></button>
+    </div><div class="btns"><button class="btn" id="m-cancel">취소</button></div></div>`;
+  modalResolve = () => {};
+  L.onmousedown = (e) => { if (e.target === L) closeModal(); };
+  L.onkeydown = (e) => { if (e.key === 'Escape') closeModal(); };
+  $('#m-cancel').onclick = () => closeModal();
+  L.querySelectorAll('[data-c]').forEach((b) => (b.onclick = async () => {
+    closeModal();
+    const c = b.dataset.c;
+    if (c === 'here') run('checkout', args, { label, force: true });
+    if (c === 'view') { const sha = args.kind === 'commit' ? args.ref : S.refs.find((r) => r.name === args.ref)?.sha; if (sha) selectCommit(sha); }
+    if (c === 'main') { await openTab(S.info.main); run('checkout', args, { label, force: true }); }
+  }));
+  L.querySelector('[data-c]')?.focus();
+}
+
+async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
+  if (action === 'checkout' && S.info?.worktree && P.worktreeGuard && !force && !quiet) { worktreeGuard(args, label); return false; }
   if (action === 'checkout' && args.kind !== 'commit') {
     const local = args.kind === 'remote' ? args.ref.slice(args.ref.indexOf('/') + 1) : args.ref;
     const wt = otherWorktree(local);
@@ -1153,6 +1199,7 @@ async function run(action, args = {}, { label, quiet, noUndo } = {}) {
     return true;
   } catch (e) {
     const auth = AUTH_RE.test(e.message);
+    if (e.message.startsWith('DIVERGED ')) { divergedChoice(JSON.parse(e.message.slice(9)), args, label); return false; }
     const wtm = e.message.match(/'([^']+)' is already (?:used by|checked out at) worktree at '([^']+)'/) || e.message.match(/'([^']+)' is already checked out at '([^']+)'/);
     if (wtm) { worktreeChoice(wtm[1], wtm[2]); return false; }
     const hint = /repository not found/i.test(e.message) ? '\n\n→ 원격 주소가 바뀌었거나, 이 저장소에 권한이 없는 계정/키로 접속했을 수 있어요.' : '';
@@ -1316,7 +1363,7 @@ function branchItems(ref) {
     const wt = ref.type === 'branch' ? otherWorktree(name) : null;
     if (wt) items.push({ label: `워크트리 열기 (${wt.path.split(/[\\/]/).pop()})`, icon: 'layers', tip: `${name} 는 이 워크트리에서 사용 중이에요: ${tilde(wt.path)}`, run: () => openTab(wt.path) });
     if (ref.type === 'branch') items.push({ label: `${name} 로 전환`, hint: 'checkout', run: () => run('checkout', { ref: name, kind: 'branch' }, { label: `${name} 전환` }) });
-    else if (ref.type === 'remote') items.push({ label: `${name} 를 로컬로 받아 전환`, hint: 'checkout --track', run: () => run('checkout', { ref: name, kind: 'remote' }, { label: `${name} 전환` }) });
+    else if (ref.type === 'remote') items.push({ label: `${name} 위치로 전환`, hint: 'checkout', tip: '같은 이름의 로컬 브랜치가 없으면 만들고, 뒤처져 있으면 원격 위치까지 빨리감기합니다. 갈라져 있으면 먼저 물어봐요.', run: () => run('checkout', { ref: name, kind: 'remote' }, { label: `${name} 전환` }) });
     else items.push({ label: `태그 ${name} 로 이동 (detached)`, hint: 'checkout', run: () => run('checkout', { ref: ref.sha, kind: 'commit' }, { label: '이동' }) });
   } else if (ref.upstream) items.push({ label: `원격과 똑같이 맞추기 (${ref.upstream})`, hint: 'reset --hard @{u}', danger: true, run: syncUpstream });
   items.push({ label: S.solo === name ? '모든 브랜치 보기' : '이 브랜치만 보기', hint: 'solo', tip: '그래프에 이 브랜치의 기록만 표시합니다', run: () => setSolo(S.solo === name ? null : name) });
@@ -1591,6 +1638,7 @@ async function settingsBody(sec) {
     ${optRow('자동 가져오기', '주기적으로 fetch 해서 ↑↓ 를 최신으로 유지', optSeg('autoFetch', [[0, '끔'], [5, '5분'], [15, '15분'], [30, '30분']]))}
     ${optRow('가져올 때 정리 (prune)', '원격에서 지워진 브랜치를 로컬 목록에서도 지움', optToggle('fetchPrune'))}
     ${optRow('풀 방식', 'git 설정 기본값 / 머지 / 리베이스 / 빨리감기만', optSeg('pullMode', [['default', '기본'], ['merge', '머지'], ['rebase', '리베이스'], ['ff-only', 'FF만']]))}
+    ${optRow('워크트리 보호', '워크트리 탭에서는 더블클릭으로 브랜치가 바뀌지 않고, 전환할 땐 먼저 물어봅니다', optToggle('worktreeGuard'))}
     ${optRow('스태시에 새 파일 포함', 'git stash -u', optToggle('stashUntracked'))}
     ${optRow('푸시 전에 확인', '', optToggle('confirmPush'))}
     <p class="opt-note">머지·리베이스·리셋·삭제는 항상 확인 창이 뜨고, 실행 후 토스트의 <b>되돌리기</b> 또는 <kbd>⌘Z</kbd> 로 취소할 수 있어요.</p>`;
@@ -1818,6 +1866,7 @@ function bind() {
   rows.addEventListener('dblclick', (e) => {
     const p = e.target.closest('[data-ref]'); if (!p) return;
     const ref = findRef(p.dataset.ref);
+    if (S.info?.worktree && P.worktreeGuard) return; // a worktree stays on its branch: double-click only looks
     if (ref && ref.type !== 'tag' && !(ref.type === 'branch' && ref.name === S.info?.branch)) run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 전환` });
   });
   rows.addEventListener('contextmenu', (e) => {
@@ -1847,6 +1896,7 @@ function bind() {
     const it = e.target.closest('[data-ref]'); if (!it) return;
     const ref = findRef(it.dataset.ref);
     if (!ref || ref.type === 'tag' || (ref.type === 'branch' && ref.name === S.info?.branch)) return;
+    if (S.info?.worktree && P.worktreeGuard) return; // already selected by the first click
     run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 전환` });
   });
   $('#sb-body').addEventListener('contextmenu', (e) => { const it = e.target.closest('[data-ref]'); if (!it) return; e.preventDefault(); const ref = findRef(it.dataset.ref); if (ref) showMenu(refMenu(ref), e.clientX, e.clientY); });
