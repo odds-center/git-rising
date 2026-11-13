@@ -1059,8 +1059,48 @@ function renderTabs() {
 function renderActions() {
   const cur = S.refs.find((r) => r.type === 'branch' && r.name === S.info?.branch);
   $('#tb-status').innerHTML = S.info ? `${icon('branch')} ${escN(S.info.branch || 'detached')}${cur ? ' ' + trackHTML(cur.track) : ''}${S.status.length ? ` · 변경 ${S.status.length}` : ''}` : '';
-  $('[data-act=pop]').disabled = !S.stashes;
-  $('[data-act=stash]').disabled = !S.status.length;
+  const ahead = +(cur?.track?.match(/ahead (\d+)/) || [0, 0])[1], behind = +(cur?.track?.match(/behind (\d+)/) || [0, 0])[1];
+  const cnt = (id, n) => { const el = $(id); el.hidden = !n; el.textContent = n > 99 ? '99+' : n; };
+  cnt('#cnt-pull', behind); cnt('#cnt-push', ahead); cnt('#cnt-stash', S.stashes);
+  const dis = (act, on) => { const b = $(`[data-act=${act}]`); if (b) b.disabled = !!on; };
+  dis('pop', !S.stashes); dis('stash', !S.status.length);
+  $('[data-menu=stash]').disabled = !S.stashes;
+  dis('undo', !S.lastUndo); dis('sync', !cur?.upstream);
+  const hasWeb = !!Object.values(S.meta.remotes || {}).find(Boolean);
+  dis('web', !hasWeb); dis('pr', !hasWeb || !S.info?.branch);
+  $('[data-act=remotes]').classList.toggle('off', !P.showRemotes);
+  $('[data-act=undo]').dataset.tip = S.lastUndo ? `되돌리기: ${S.lastUndo.label} (⌘Z)` : '되돌릴 작업이 없어요';
+}
+async function toolbarMenu(kind, btn) {
+  const r = btn.getBoundingClientRect();
+  const cur = S.info?.branch || '';
+  if (kind === 'pull') return showMenu([
+    { head: '풀 방식' },
+    { label: '머지로 풀', hint: 'pull --no-rebase', icon: 'merge', run: () => run('pull', { mode: 'merge' }, { label: '풀' }) },
+    { label: '리베이스로 풀', hint: 'pull --rebase', icon: 'rebase', run: () => run('pull', { mode: 'rebase' }, { label: '풀 (리베이스)' }) },
+    { label: '빨리감기만', hint: 'pull --ff-only', icon: 'ff', tip: '갈라져 있으면 실패 (안전)', run: () => run('pull', { mode: 'ff-only' }, { label: '풀 (FF)' }) },
+    '-',
+    { label: '기본 방식 바꾸기…', icon: 'settings', run: () => openSettings('git') },
+  ], r.left, r.bottom + 4);
+  if (kind === 'push') return showMenu([
+    { head: `푸시 · ${cur}` },
+    { label: '강제 푸시 (안전)', hint: 'push --force-with-lease', icon: 'up', danger: true, tip: '리베이스·amend 뒤에 사용. 그 사이 다른 사람이 올렸으면 거부됩니다.', run: () => confirmRun('강제 푸시', `${cur} 를 원격에 덮어씁니다.\ngit push --force-with-lease\n\n그 사이 다른 사람이 푸시했다면 거부되어 안전합니다.`, 'push', { force: true }, '강제 푸시') },
+    { label: '태그 푸시', hint: 'push --tags', icon: 'tag', run: () => run('push', { tags: true }, { label: '태그 푸시' }) },
+  ], r.left, r.bottom + 4);
+  if (kind === 'stash') {
+    const { stashes } = await api('stashes', { repo: S.repo });
+    return showMenu([
+      { head: `스태시 ${stashes.length}개` },
+      ...stashes.slice(0, 20).map((st) => ({
+        label: `${st.message.replace(/^(WIP on|On) /, '').slice(0, 52)}`, hint: relDate(st.time), icon: 'archive',
+        sub: [
+          { label: '적용 (스태시는 남김)', hint: 'stash apply', icon: 'unarchive', run: () => run('stashApply', { index: st.index }, { label: '스태시 적용' }) },
+          { label: '꺼내기 (적용 후 삭제)', hint: 'stash pop', icon: 'unarchive', run: () => run('stashPop', { index: st.index }, { label: '스태시 꺼내기' }) },
+          { label: '삭제', hint: 'stash drop', icon: 'trash', danger: true, run: () => confirmRun('스태시 삭제', `${st.message}\n\n이 스태시를 버립니다. 되돌릴 수 없어요.`, 'stashDrop', { index: st.index }, '스태시 삭제') },
+        ],
+      })),
+    ], r.left, r.bottom + 4);
+  }
 }
 function renderBanner() {
   const b = $('#banner'), op = S.meta.op;
@@ -1200,6 +1240,7 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
     if (!quiet || warn) toast(warn ? r.output.trim().slice(0, 900) : (label || action) + ' 완료' + (r.output?.trim() ? '\n' + r.output.trim().slice(-500) : ''), warn ? 'err' : 'ok',
       undo ? [{ label: '되돌리기 (⌘Z)', run: undo }] : []);
     S.lastUndo = undo ? { fn: undo, label: label || action, at: Date.now() } : S.lastUndo;
+    renderActions();
     return true;
   } catch (e) {
     const auth = AUTH_RE.test(e.message);
@@ -1300,6 +1341,14 @@ const ACT = {
   stash: () => run('stash', { untracked: P.stashUntracked }, { label: '스태시' }),
   pop: () => run('pop', {}, { label: '스태시 꺼내기' }),
   terminal: () => termToggle(),
+  undo: () => { if (S.lastUndo) { const u = S.lastUndo; S.lastUndo = null; renderActions(); u.fn(); } },
+  sync: () => syncUpstream(),
+  head: () => S.info?.head && selectCommit(S.info.head),
+  find: () => openFind(),
+  remotes: () => setPref('showRemotes', !P.showRemotes),
+  reload: () => loadRepo(S.repo, { keep: true }),
+  web: () => run('openWeb', { kind: 'repo' }, { quiet: true, noUndo: true }),
+  pr: () => run('openWeb', { kind: 'pr' }, { quiet: true, noUndo: true }),
   extTerminal: () => run('terminal', {}, { quiet: true }),
   reveal: () => run('reveal', {}, { quiet: true }),
 };
@@ -1602,6 +1651,7 @@ function setPref(k, v) {
   if (k === 'avatarPhotos' || k === 'gravatar') { AV.clear(); S.ver++; renderRows(); renderDetail(); }
   if (k === 'repoLogos') { renderTabs(); renderSidebar(); }
   if (k === 'aiUsage') startAi();
+  if (k === 'showRemotes' && S.repo) renderActions();
   if (['showRemotes', 'order'].includes(k) && S.repo) { S.labelCache = new Map(); setSolo(S.solo); }
   if (k === 'showTags') { S.labelCache = new Map(); S.ver++; renderRows(); }
   if (['colAuthor', 'colDate', 'colSha'].includes(k)) { applyCols(); S.ver++; renderRows(); }
@@ -1975,6 +2025,7 @@ function bind() {
   $('#tab-add').onclick = () => openPalette('repos');
   $('#cmdk').onclick = () => openPalette('all');
   document.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () => S.repo && ACT[b.dataset.act]()));
+  document.querySelectorAll('[data-menu]').forEach((b) => (b.onclick = () => S.repo && toolbarMenu(b.dataset.menu, b)));
   $('#banner').addEventListener('click', (e) => {
     const b = e.target.closest('[data-banner]'); if (!b) return;
     if (b.dataset.banner === 'abort') confirmRun('작업 중단', `진행 중인 ${S.meta.op} 을 취소하고 시작 전 상태로 되돌립니다.`, 'abort', { op: S.meta.op }, '중단');

@@ -18,18 +18,33 @@
   <div id="toolbar">
     <nav id="actions">
       <div class="grp">
-        <button class="tb" data-act="fetch" data-tip="원격의 최신 정보를 받아옵니다 (내 브랜치는 그대로)|git fetch --all --prune"><i data-i="refresh"></i><span>가져오기</span></button>
-        <button class="tb" data-act="pull" data-tip="원격의 변경을 현재 브랜치에 합칩니다|git pull"><i data-i="down"></i><span>풀</span></button>
-        <button class="tb" data-act="push" data-tip="현재 브랜치 커밋을 원격에 올립니다 (처음이면 -u origin)|git push"><i data-i="up"></i><span>푸시</span></button>
+        <button class="tb" data-act="fetch" data-tip="원격의 최신 정보를 받아옵니다 (내 브랜치는 그대로)|git fetch --prune"><i data-i="refresh"></i><span>가져오기</span></button>
+        <button class="tb" data-act="pull" data-tip="원격의 변경을 현재 브랜치에 합칩니다|git pull"><i data-i="down"></i><span>풀</span><b class="cnt" id="cnt-pull" hidden></b></button>
+        <button class="tb caret" data-menu="pull" data-tip="풀 방식 고르기"><i data-i="chev-down"></i></button>
+        <button class="tb" data-act="push" data-tip="현재 브랜치 커밋을 원격에 올립니다 (처음이면 -u origin)|git push"><i data-i="up"></i><span>푸시</span><b class="cnt" id="cnt-push" hidden></b></button>
+        <button class="tb caret" data-menu="push" data-tip="강제 푸시 · 태그 푸시"><i data-i="chev-down"></i></button>
       </div>
       <div class="grp">
-        <button class="tb" data-act="newbranch" data-tip="현재 위치에서 새 브랜치|git checkout -b"><i data-i="branch"></i><span>브랜치</span></button>
+        <button class="tb" data-act="newbranch" data-tip="현재 위치에서 새 브랜치|git checkout -b"><i data-i="branch-plus"></i><span>브랜치</span></button>
         <button class="tb" data-act="stash" data-tip="커밋 안 한 변경을 임시 보관|git stash push -u"><i data-i="archive"></i><span>스태시</span></button>
-        <button class="tb" data-act="pop" data-tip="보관한 변경을 다시 꺼내기|git stash pop"><i data-i="unarchive"></i><span>꺼내기</span></button>
+        <button class="tb" data-act="pop" data-tip="가장 최근 스태시를 다시 꺼내기|git stash pop"><i data-i="unarchive"></i><span>꺼내기</span><b class="cnt" id="cnt-stash" hidden></b></button>
+        <button class="tb caret" data-menu="stash" data-tip="스태시 목록 — 골라서 적용 · 삭제"><i data-i="chev-down"></i></button>
+      </div>
+      <div class="grp">
+        <button class="tb" data-act="undo" data-tip="방금 한 작업 되돌리기 (⌘Z)"><i data-i="undo"></i><span>되돌리기</span></button>
+        <button class="tb" data-act="sync" data-tip="현재 브랜치를 원격과 완전히 똑같이|git fetch && git reset --hard @{u}"><i data-i="cloud-down"></i><span>원격과 맞추기</span></button>
+      </div>
+      <div class="grp">
+        <button class="tb icon-only" data-act="head" data-tip="현재 체크아웃 위치로 이동 (Shift+H)"><i data-i="checkout"></i></button>
+        <button class="tb icon-only" data-act="find" data-tip="커밋 검색 — 전체 히스토리 (⌘F)"><i data-i="search"></i></button>
+        <button class="tb icon-only" data-act="remotes" data-tip="원격 브랜치 표시 / 숨기기"><i data-i="cloud"></i></button>
+        <button class="tb icon-only" data-act="reload" data-tip="새로고침 (⌘R)"><i data-i="rotate"></i></button>
       </div>
       <div class="grp">
         <button class="tb icon-only" data-act="terminal" data-tip="내장 터미널 열기/닫기 (⌃`)|기본 셸 · 이 저장소 폴더에서 시작"><i data-i="terminal"></i></button>
         <button class="tb icon-only" data-act="reveal" data-tip="Finder / 탐색기로 열기"><i data-i="folder"></i></button>
+        <button class="tb icon-only" data-act="web" data-tip="GitHub 에서 저장소 열기"><i data-i="external"></i></button>
+        <button class="tb" data-act="pr" data-tip="현재 브랜치로 Pull Request 만들기 (웹)"><i data-i="merge"></i><span>PR</span></button>
       </div>
     </nav>
     <span class="grow"></span>

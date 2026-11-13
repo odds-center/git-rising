@@ -162,6 +162,7 @@ if (!app.requestSingleInstanceLock()) {
       reveal: async (dir) => { await shell.openPath(dir); },
       openPath: async (p) => { const err = await shell.openPath(p); if (err) throw new Error(err); },
       showItem: async (p) => shell.showItemInFolder(p),
+      openExternal: async (url) => { if (/^https?:\/\//.test(url)) await shell.openExternal(url); },
     };
     const { port, host } = await startServer(hooks);
     // attach to the server's live host object (it copies `hooks` at start)

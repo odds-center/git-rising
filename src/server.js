@@ -29,6 +29,7 @@ const MAX_DIFF_BYTES = 3 * 1024 * 1024;
  * @property {(dir: string) => Promise<void>} reveal
  * @property {(file: string) => Promise<void>} openPath
  * @property {(file: string) => Promise<void> | void} [showItem]
+ * @property {(url: string) => Promise<void>} [openExternal]
  * @property {{ script: string, js: string, port: number, token: string } | null} askpass
  * @property {{ status(): any, check(manual?: boolean): Promise<void>, install(): Promise<void> | void } | null} update
  * @property {{ command: string, json: any, install(): Promise<string> } | null} mcp
@@ -580,6 +581,13 @@ async function apiClone(_q, body) {
   return { path: target };
 }
 
+const stashIndex = (i) => { const n = parseInt(i); if (!(n >= 0 && n < 1000)) throw httpError(400, 'bad stash index'); return n; };
+async function apiStashes(q) {
+  const repo = await resolveRepo(q.repo);
+  const out = await git(repo, ['stash', 'list', '--format=%gd%x00%ct%x00%gs']).catch(() => '');
+  return { stashes: out.split('\n').filter(Boolean).map((l) => { const [ref, time, msg] = l.split('\x00'); return { index: +(ref.match(/\{(\d+)\}/) || [0, 0])[1], time: +time, message: msg }; }) };
+}
+
 /** Every write the UI / MCP can ask for. @type {Record<string, (repo: string, args?: any) => Promise<any>>} */
 const actions = {
   async checkout(repo, { ref, kind, mode }) {
@@ -730,11 +738,32 @@ const actions = {
     return failed.length ? `⚠ 일부 원격은 가져오지 못했어요 (나머지는 완료)\n\n${failed.map((f) => f.msg).join('\n\n')}` : '';
   },
   pull: (repo, { mode } = {}) => git(repo, ['pull', '--no-edit', ...(mode === 'rebase' ? ['--rebase'] : mode === 'ff-only' ? ['--ff-only'] : mode === 'merge' ? ['--no-rebase'] : [])]),
-  async push(repo) {
+  async push(repo, { force, tags } = {}) {
+    if (tags) return git(repo, ['push', '--tags']);
     const br = await currentBranch(repo);
     if (!br) throw httpError(400, 'HEAD가 detached 상태입니다');
     const up = await git(repo, ['rev-parse', '--abbrev-ref', '@{u}']).then(() => true, () => false);
-    return up ? git(repo, ['push']) : git(repo, ['push', '-u', 'origin', br]);
+    const extra = force ? ['--force-with-lease'] : []; // refuses if someone else pushed in the meantime
+    return up ? git(repo, ['push', ...extra]) : git(repo, ['push', '-u', ...extra, 'origin', br]);
+  },
+  async stashApply(repo, { index }) { return git(repo, ['stash', 'apply', `stash@{${stashIndex(index)}}`]); },
+  async stashPop(repo, { index }) { return git(repo, ['stash', 'pop', `stash@{${stashIndex(index)}}`]); },
+  async stashDrop(repo, { index }) { return git(repo, ['stash', 'drop', `stash@{${stashIndex(index)}}`]); },
+  async openWeb(repo, { kind = 'repo', ref }) {
+    const url = (await git(repo, ['remote', 'get-url', 'origin']).catch(() => '')).trim();
+    const web = webUrl(url);
+    if (!web) throw httpError(409, 'origin 의 웹 주소를 알 수 없어요');
+    const br = ref || (await currentBranch(repo));
+    const enc = (b) => b.split('/').map(encodeURIComponent).join('/');
+    const gitlab = /gitlab/i.test(web);
+    const target = kind === 'pr' && br ? (gitlab ? `${web}/-/merge_requests/new?merge_request[source_branch]=${encodeURIComponent(br)}` : `${web}/compare/${enc(br)}?expand=1`)
+      : kind === 'branch' && br ? `${web}/tree/${enc(br)}`
+      : kind === 'prs' ? (gitlab ? `${web}/-/merge_requests` : `${web}/pulls`)
+      : kind === 'actions' ? (gitlab ? `${web}/-/pipelines` : `${web}/actions`)
+      : web;
+    if (!host.openExternal) throw httpError(409, target);
+    await host.openExternal(target);
+    return target;
   },
   stash: (repo, { untracked = true, message } = {}) => git(repo, ['stash', 'push', ...(untracked ? ['-u'] : []), ...(message ? ['-m', String(message).slice(0, 200)] : [])]),
   pop: (repo) => git(repo, ['stash', 'pop']),
@@ -1498,6 +1527,7 @@ const routes = {
   '/api/filelog': apiFileLog,
   '/api/remotes': apiRemotes,
   '/api/aiusage': apiAiUsage,
+  '/api/stashes': apiStashes,
   '/api/shelltools': async (_q, body) => (body ? shellToolsAction(body) : apiShellTools()),
   // UI state (tabs, preferences, column widths). Kept in a file because the app's origin
   // (127.0.0.1:<random port>) changes every launch, which would orphan localStorage.
