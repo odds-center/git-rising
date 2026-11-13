@@ -708,3 +708,10 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
   color: #5fae7c; background: color-mix(in srgb, #5fae7c 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #5fae7c 40%, transparent); }
 .wt-at svg { width: 11px; height: 11px; stroke-width: 2.2; }
 .wt-at:hover { background: #5fae7c; color: #0f1a13; }
+
+/* ---------- periodic sync indicator ---------- */
+#sb-sync { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 6px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+#sb-sync[hidden] { display: none; }
+#sb-sync:hover { background: var(--hover); color: var(--text); }
+#sb-sync svg { width: 11px; height: 11px; }
+#sb-sync.warn { color: var(--mod); }

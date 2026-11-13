@@ -164,12 +164,17 @@ function gitEnv(extra = {}) {
 }
 
 // ---------- git helpers ----------
-function git(repo, args, { okCodes = [0], maxBuffer = 256 * 1024 * 1024 } = {}) {
+/**
+ * @param {string} repo @param {string[]} args
+ * @param {{ okCodes?: number[], maxBuffer?: number, env?: Record<string, string | undefined>, timeout?: number }} [opts]
+ * @returns {Promise<string>}
+ */
+function git(repo, args, { okCodes = [0], maxBuffer = 256 * 1024 * 1024, env, timeout } = {}) {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
       ['-C', repo, '-c', 'core.quotePath=false', '-c', 'color.ui=false', '-c', 'i18n.logOutputEncoding=UTF-8', ...args],
-      { maxBuffer, encoding: 'buffer', env: gitEnv() },
+      { maxBuffer, encoding: 'buffer', env: env || gitEnv(), timeout },
       (err, stdout, stderr) => {
         const code = err ? (typeof err.code === 'number' ? err.code : -1) : 0;
         if (okCodes.includes(code)) return resolve(decodeSmart(stdout));
@@ -769,6 +774,31 @@ const actions = {
     const up = await git(repo, ['rev-parse', '--abbrev-ref', '@{u}']).then(() => true, () => false);
     const extra = force ? ['--force-with-lease'] : []; // refuses if someone else pushed in the meantime
     return up ? git(repo, ['push', ...extra]) : git(repo, ['push', '-u', ...extra, 'origin', br]);
+  },
+  // Background sync (runs on a timer): fetch, then fast-forward the current branch when that is safe.
+  // Never merges, never rebases, never asks for a password.
+  async autoSync(repo, { pull = true } = {}) {
+    const sshCmd = (await git(repo, ['config', '--get', 'core.sshCommand']).catch(() => '')).trim() || 'ssh';
+    const quiet = gitEnv({ GIT_SSH_COMMAND: `${sshCmd} -o BatchMode=yes -o ConnectTimeout=10` });
+    for (const k of ['GIT_ASKPASS', 'SSH_ASKPASS', 'SSH_ASKPASS_REQUIRE']) delete quiet[k];
+    quiet.GIT_TERMINAL_PROMPT = '0';
+    const remotes = (await git(repo, ['remote'])).split('\n').filter(Boolean);
+    const failed = [];
+    await Promise.all(remotes.map((r) => git(repo, ['fetch', '--prune', r], { env: quiet, timeout: 60000 }).catch((e) => failed.push(`${r}: ${e.message.split('\n')[0]}`))));
+    const out = { fetched: remotes.length - failed.length, failed, pulled: 0, state: 'synced', branch: await currentBranch(repo) };
+    if (!out.branch) return (out.state = 'detached'), out;
+    const up = (await git(repo, ['rev-parse', '--abbrev-ref', '@{u}']).catch(() => '')).trim();
+    if (!up) return (out.state = 'no-upstream'), out;
+    const [ahead, behind] = (await git(repo, ['rev-list', '--left-right', '--count', `HEAD...${up}`])).trim().split(/\s+/).map(Number);
+    out.ahead = ahead; out.behind = behind;
+    if (!behind) return out;
+    if (ahead) return (out.state = 'diverged'), out;       // local commits exist → leave it to the user
+    if (!pull) return (out.state = 'behind'), out;
+    const gitDir = path.resolve(repo, (await git(repo, ['rev-parse', '--git-dir'])).trim());
+    if (['MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD'].some((f) => fs.existsSync(path.join(gitDir, f)))) return (out.state = 'busy'), out;
+    try { await git(repo, ['merge', '--ff-only', up]); out.pulled = behind; out.state = 'pulled'; }
+    catch (e) { out.state = 'blocked'; out.error = e.message.split('\n').slice(0, 3).join(' '); } // local edits overlap incoming files
+    return out;
   },
   async stashClear(repo) {
     const n = (await listStashes(repo)).length;

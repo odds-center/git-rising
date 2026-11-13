@@ -28,10 +28,12 @@ let ROW = 24, LANE = 14, PAD = 10, NODE_R = 4;
 const PREF_DEF = {
   theme: LS.get('theme', 'dark'), darkTone: 'soft', accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
   avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
-  autoFetch: LS.get('autoFetch', false) ? 5 : 0, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
+  autoFetch: 5, autoPull: true, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
   aiUsage: false, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
 };
 const P = Object.assign({}, PREF_DEF, LS.get('prefs', {}));
+// one-time: periodic sync (fetch + safe fast-forward) became the default in 0.2.22
+if (!LS.get('m0222')) { if (!P.autoFetch) P.autoFetch = 5; P.autoPull = true; LS.set('prefs', P); LS.set('m0222', 1); }
 // one-time: profile photos / avatars became the default in 0.2.1
 if (!LS.get('m021')) { P.avatars = true; P.avatarPhotos = true; LS.set('prefs', P); LS.set('m021', 1); }
 const ACCENTS = { indigo: ['#7c8aff', '#5463ff'], blue: ['#4c9aff', '#1f6feb'], violet: ['#a77bff', '#7c4dff'], green: ['#3fcf8e', '#14a06a'], orange: ['#ff9a4c', '#e2700c'], pink: ['#f06bb3', '#d63384'], teal: ['#2fc6c6', '#0e9a9a'] };
@@ -326,6 +328,7 @@ async function loadRepo(repo, { keep = false, open = false, manual = false } = {
     rebuild();
     renderTabs(); renderSidebar(); renderBanner(); renderStatusbar(); renderActions();
     if (switching || !ID.data) loadIdentity();
+    renderSync(); if (switching) setTimeout(() => autoSyncTick(), 1500);
     if (S.selected && vIndex(S.selected) < 0) S.selected = null;
     if (S.detail?.stash && !S.stashList.some((x) => x.sha === S.detail.stash.sha)) { S.detail = null; closeDiff(); }
     if (S.selected) selectCommit(S.selected, { scroll: false, force: true }); else renderDetail();
@@ -1805,6 +1808,7 @@ function setPref(k, v) {
   if (k === 'avatarPhotos' || k === 'gravatar') { AV.clear(); S.ver++; renderRows(); renderDetail(); }
   if (k === 'repoLogos') { renderTabs(); renderSidebar(); }
   if (k === 'aiUsage') startAi();
+  if (k === 'autoFetch' || k === 'autoPull') { renderSync(); if (P.autoFetch) { SYNC.last.delete(S.repo); autoSyncTick(true); } }
   if (k === 'showRemotes' && S.repo) renderActions();
   if (['showRemotes', 'order'].includes(k) && S.repo) { S.labelCache = new Map(); setSolo(S.solo); }
   if (k === 'showTags') { S.labelCache = new Map(); S.ver++; renderRows(); }
@@ -1851,7 +1855,8 @@ async function settingsBody(sec) {
     ${optRow('SHA 컬럼', '', optToggle('colSha'))}
     ${optRow('컬럼 너비 초기화', '헤더 경계를 드래그해 바꾼 너비를 되돌립니다', '<button class="btn sm" id="set-cols">초기화</button>')}`;
   if (sec === 'git') return `
-    ${optRow('자동 가져오기', '주기적으로 fetch 해서 ↑↓ 를 최신으로 유지', optSeg('autoFetch', [[0, '끔'], [5, '5분'], [15, '15분'], [30, '30분']]))}
+    ${optRow('자동 동기화', '보고 있는 저장소를 주기적으로 원격에서 가져옵니다 (창이 뒤에 있으면 쉬어요)', optSeg('autoFetch', [[0, '끔'], [2, '2분'], [5, '5분'], [15, '15분'], [30, '30분']]))}
+    ${optRow('받아온 커밋 자동 반영', '현재 브랜치가 뒤처져 있기만 하면 빨리감기로 반영 (pull 과 같은 결과). 로컬 커밋이 있거나 수정 중인 파일과 겹치면 건드리지 않습니다', optToggle('autoPull'))}
     ${optRow('가져올 때 정리 (prune)', '원격에서 지워진 브랜치를 로컬 목록에서도 지움', optToggle('fetchPrune'))}
     ${optRow('풀 방식', 'git 설정 기본값 / 머지 / 리베이스 / 빨리감기만', optSeg('pullMode', [['default', '기본'], ['merge', '머지'], ['rebase', '리베이스'], ['ff-only', 'FF만']]))}
     ${optRow('스태시에 새 파일 포함', 'git stash -u', optToggle('stashUntracked'))}
@@ -2249,6 +2254,8 @@ function bind() {
   $('#palette-layer').addEventListener('mousedown', (e) => { if (e.target.id === 'palette-layer') closePalette(); });
   $('#sb-theme').onclick = toggleTheme;
   $('#sb-ai').onclick = aiPopover;
+  $('#sb-sync').onclick = () => { SYNC.last.delete(S.repo); autoSyncTick(true); };
+  setInterval(() => renderSync(), 60000);
   $('#tb-author').onclick = identityMenu;
   $('#sb-settings').onclick = () => openSettings();
   $('#sb-update').onclick = async () => {
@@ -2283,12 +2290,8 @@ function bind() {
       { label: '전체 경로 복사', run: () => copy(S.info.path + '/' + file.path) },
     ], e.clientX, e.clientY);
   }, true);
-  let lastAuto = Date.now();
-  setInterval(() => {
-    if (!P.autoFetch || !S.repo || document.hidden || Date.now() - lastAuto < P.autoFetch * 60000) return;
-    lastAuto = Date.now();
-    post('action', { repo: S.repo }, { action: 'fetch', args: { prune: P.fetchPrune } }).catch(() => {});
-  }, 30000);
+  setInterval(() => autoSyncTick(), 30000);
+  setTimeout(() => autoSyncTick(true), 4000); // shortly after start
 
   document.addEventListener('mousedown', (e) => { if (!e.target.closest?.('.menu')) closeMenus(); if (!e.target.closest?.('#refpop, .more, .c-ref .pill')) hideRefPop(); });
   window.addEventListener('blur', closeMenus);
@@ -2406,6 +2409,35 @@ async function editProfile(p = null, prefill = null) {
     } catch (e) { $('#pf-out').textContent = '✗ ' + e.message; }
   };
   setTimeout(() => $('#pf-label').focus(), 0);
+}
+
+// ================================================================ periodic sync: fetch + safe fast-forward
+const SYNC = { last: new Map(), running: false, info: null };
+async function autoSyncTick(first) {
+  if (!P.autoFetch || !S.repo || document.hidden || SYNC.running || S.meta.op) return;
+  const repo = S.repo;
+  const due = Date.now() - (SYNC.last.get(repo) || 0) >= P.autoFetch * 60000;
+  if (!due && !first) return;
+  if (first && SYNC.last.has(repo)) return;
+  SYNC.running = true; SYNC.last.set(repo, Date.now());
+  renderSync('동기화 중…');
+  try {
+    const r = (await post('action', { repo }, { action: 'autoSync', args: { pull: P.autoPull } })).output;
+    SYNC.info = { repo, at: Date.now(), ...r };
+    if (r.pulled && repo === S.repo) toast(`${r.branch}: 새 커밋 ${r.pulled}개를 받아왔어요`, 'ok');
+    if (repo === S.repo && (r.pulled || r.fetched)) loadRepo(repo, { keep: true });
+  } catch (e) { SYNC.info = { repo, at: Date.now(), state: 'error', error: e.message }; }
+  finally { SYNC.running = false; renderSync(); }
+}
+function renderSync(text) {
+  const el = $('#sb-sync');
+  const i = SYNC.info && SYNC.info.repo === S.repo ? SYNC.info : null;
+  el.hidden = !P.autoFetch || !S.repo;
+  if (el.hidden) return;
+  const label = { synced: '최신', pulled: `${i?.pulled}개 받음`, behind: `받을 커밋 ${i?.behind}개`, diverged: `갈라짐 ↑${i?.ahead} ↓${i?.behind}`, blocked: '자동 반영 보류', busy: '작업 중이라 보류', 'no-upstream': '원격 연결 없음', detached: '브랜치 없음', error: '동기화 실패' };
+  el.className = i && ['diverged', 'blocked', 'error'].includes(i.state) ? 'warn' : '';
+  el.innerHTML = `${icon('refresh')}<span>${text || (i ? `${label[i.state] || i.state} · ${relDate(i.at / 1000)}` : '자동 동기화 켜짐')}</span>`;
+  el.title = text ? '' : i ? ({ diverged: '로컬에만 있는 커밋이 있어서 자동으로 합치지 않았어요. 풀(리베이스/머지)을 직접 실행하세요.', blocked: '수정 중인 파일과 겹쳐서 자동 반영을 건너뛰었어요: ' + (i.error || ''), error: i.error || '' }[i.state] || `${P.autoFetch}분마다 가져오고${P.autoPull ? ', 안전하면 빨리감기로 반영합니다' : ' 표시만 합니다'}`) + (i.failed?.length ? '\n가져오지 못한 원격: ' + i.failed.join(', ') : '') : '';
 }
 
 // ================================================================ AI usage in the status bar (opt-in)
