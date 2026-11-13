@@ -167,7 +167,7 @@ npm run install:mac        # 빌드해서 /Applications 에 설치
 npm run check              # 타입 검사 (JS 를 tsc 로 검사, 빌드 단계 없음)
 ```
 
-**릴리즈** — 태그를 올리면 GitHub Actions 가 mac/win 빌드를 Release 에 올리고, 설치된 앱들이 업데이트합니다.
+**릴리즈** — 태그를 올리면 GitHub Actions 가 mac/win 빌드를 Release 에 올리고, 설치된 앱들이 업데이트합니다. 릴리즈는 최신 3개만 남기고 자동으로 정리됩니다(태그는 유지).
 
 ```bash
 npm version patch && git push --follow-tags
