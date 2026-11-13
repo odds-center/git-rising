@@ -986,8 +986,8 @@ function renderDiff(patch, truncated, f) {
     const mk = r.type === 'add' ? '+' : r.type === 'del' ? '−' : ' ';
     return `<div class="dl ${r.type}"><span class="ln">${r.o ?? ''}</span><span class="ln">${r.n ?? ''}</span><span class="tx"><span class="mk">${mk}</span>${hlLine(r.text, lang)}</span></div>`;
   });
-  if (truncated) out.push('<div class="diff-note">diff 가 너무 커서 일부만 표시합니다</div>');
-  $('#diff-body').innerHTML = out.join('');
+  // one wrapper as wide as the longest line, so every row's background reaches the end when scrolled sideways
+  $('#diff-body').innerHTML = `<div class="dwrap">${out.join('')}</div>` + (truncated ? '<div class="diff-note">diff 가 너무 커서 일부만 표시합니다</div>' : '');
   $('#diff-body').scrollTop = 0;
 }
 function renderSplit(patch, truncated, f) {
@@ -1053,7 +1053,7 @@ function renderFull(text, patch, f, side) {
   const MAX = 20000;
   const cls = side === 'new' ? 'add' : 'del';
   const body = $('#diff-body');
-  body.innerHTML = lines.slice(0, MAX).map((l, i) => `<div class="fl${changed.has(i + 1) ? ' ' + cls : ''}" ${changed.has(i + 1) ? 'data-chg' : ''}><span class="ln">${i + 1}</span><span class="tx">${l || ' '}</span></div>`).join('')
+  body.innerHTML = '<div class="dwrap">' + lines.slice(0, MAX).map((l, i) => `<div class="fl${changed.has(i + 1) ? ' ' + cls : ''}" ${changed.has(i + 1) ? 'data-chg' : ''}><span class="ln">${i + 1}</span><span class="tx">${l || ' '}</span></div>`).join('') + '</div>'
     + (lines.length > MAX ? `<div class="diff-note">${lines.length.toLocaleString()}줄 중 ${MAX.toLocaleString()}줄까지 표시</div>` : '');
   // jump to the first changed line
   const first = body.querySelector('[data-chg]');
@@ -1191,7 +1191,10 @@ function renderSidebar() {
   h += sec('remote', '원격 브랜치', 'cloud', remote.length, rb);
   h += sec('tags', '태그', 'tag', tags.length, tags.filter(match).map((r) => leaf(r, r.name, 0.4)).join(''));
   const wts = S.meta.worktrees || [];
-  h += sec('wt', '워크트리', 'tree', wts.length, wts.map((w) => `<div class="it" style="${pad(0.4)}" data-wt="${esc(w.path)}" title="${esc(w.path)}\n클릭: 이 워크트리를 탭으로 열기">${icon('tree')}<span class="nm">${esc(w.branch || w.path.split(/[\\/]/).pop())}</span><span class="ab">${esc(w.path.split(/[\\/]/).pop())}</span></div>`).join(''));
+  h += sec('wt', '워크트리', 'tree', Math.max(0, wts.length - 1), wts.map((w, i) => {
+    const folder = w.path.split(/[\\/]/).pop(), here = w.path === S.repo;
+    return `<div class="it wt-it${here ? ' here' : ''}" style="${pad(0.4)}" data-wt="${esc(w.path)}" title="${esc(tilde(w.path))}\n${here ? '지금 보고 있는 곳' : '눌러서 새 탭으로 열기'}">${icon(i === 0 ? 'folder' : 'tree')}<span class="nm">${escN(folder)}</span><span class="wt-br">${escN(w.branch || '브랜치 없음')}</span>${here ? '<span class="wt-here">보는 중</span>' : i === 0 ? '<span class="wt-main">원래 저장소</span>' : ''}</div>`;
+  }).join(''));
   h += sec('stash', '스태시', 'archive', S.stashes, (S.stashList || []).map((st) => `<div class="it${S.detail?.stash?.index === st.index ? ' selected' : ''}" style="${pad(0.4)}" data-stash="${st.index}" title="${esc(st.message)}\n눌러서 내용 미리보기">${icon('archive')}<span class="nm">${escN(st.title || '(메시지 없음)')}</span><span class="ab">${relDate(st.time)}</span></div>`).join(''));
   $('#sb-body').innerHTML = h;
 
@@ -2154,8 +2157,16 @@ function bind() {
   $('#sb-body').addEventListener('click', (e) => {
     const fold = e.target.closest('[data-fold]');
     if (fold) { const k = fold.dataset.fold; S.collapsed.has(k) ? S.collapsed.delete(k) : S.collapsed.add(k); LS.set('collapsed', [...S.collapsed]); return renderSidebar(); }
-    const it = e.target.closest('[data-ref]'); if (it) { const ref = findRef(it.dataset.ref); if (ref) selectCommit(ref.sha); return; }
-    const wt = e.target.closest('[data-wt]'); if (wt) return openTab(wt.dataset.wt);
+    const it = e.target.closest('[data-ref]');
+    if (it) {
+      const ref = findRef(it.dataset.ref);
+      const owt = ref?.type === 'branch' ? otherWorktree(ref.name) : null;
+      if (owt) { openTab(owt.path); toast(`${ref.name} 는 워크트리 '${owt.path.split(/[\\/]/).pop()}' 에 있어서 그 탭을 열었어요`, 'ok'); return; }
+      if (ref) selectCommit(ref.sha);
+      return;
+    }
+    const wt = e.target.closest('[data-wt]');
+    if (wt) { if (wt.dataset.wt === S.repo) { if (S.info?.head) selectCommit(S.info.head); return; } return openTab(wt.dataset.wt); }
     const sh = e.target.closest('[data-stash]'); if (sh) openStash(+sh.dataset.stash);
   });
   $('#sb-body').addEventListener('dblclick', (e) => {
