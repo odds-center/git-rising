@@ -1,7 +1,7 @@
 {
   "name": "git-rising",
   "productName": "Git Rising",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "가볍고 컴팩트한 git 그래프 뷰어 (macOS / Windows)",
   "type": "module",
   "main": "src/main.js",

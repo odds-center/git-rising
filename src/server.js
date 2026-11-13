@@ -598,6 +598,7 @@ const actions = {
       await checkBranchName(repo, local);
       const exists = await git(repo, ['show-ref', '--verify', '-q', `refs/heads/${local}`]).then(() => true, () => false);
       const remoteSha = await checkRev(repo, ref);
+      if (mode === 'detach') return git(repo, ['checkout', '--detach', remoteSha]);
       if (!exists) return git(repo, ['checkout', '-b', local, '--track', ref]);
       // A local branch of that name exists. The user clicked the *remote* position, so land there:
       const localSha = (await git(repo, ['rev-parse', `refs/heads/${local}`])).trim();

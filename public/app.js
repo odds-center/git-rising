@@ -29,9 +29,11 @@ const PREF_DEF = {
   theme: LS.get('theme', 'dark'), accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
   avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
   autoFetch: LS.get('autoFetch', false) ? 5 : 0, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
-  worktreeGuard: true, aiUsage: false, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
+  worktreeGuard: false, aiUsage: false, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
 };
 const P = Object.assign({}, PREF_DEF, LS.get('prefs', {}));
+// one-time: checking out inside a worktree works like anywhere else again (0.2.9)
+if (!LS.get('m029')) { P.worktreeGuard = false; LS.set('prefs', P); LS.set('m029', 1); }
 // one-time: profile photos / avatars became the default in 0.2.1
 if (!LS.get('m021')) { P.avatars = true; P.avatarPhotos = true; LS.set('prefs', P); LS.set('m021', 1); }
 const ACCENTS = { indigo: ['#7c8aff', '#5463ff'], blue: ['#4c9aff', '#1f6feb'], violet: ['#a77bff', '#7c4dff'], green: ['#3fcf8e', '#14a06a'], orange: ['#ff9a4c', '#e2700c'], pink: ['#f06bb3', '#d63384'], teal: ['#2fc6c6', '#0e9a9a'] };
@@ -1065,7 +1067,7 @@ function renderSidebar() {
 
   // header
   $('#sb-repo-name').textContent = S.info?.name || '—';
-  $('#sb-repo-path').innerHTML = S.info ? (S.info.worktree ? `<span class="wt-chip" title="${esc(tilde(S.info.main || ''))} 의 워크트리 — 브랜치를 둘러봐도 이 워크트리의 체크아웃은 바뀌지 않아요">${icon('layers')}워크트리</span>` : '') + esc(tilde(S.info.path)) : '';
+  $('#sb-repo-path').innerHTML = S.info ? (S.info.worktree ? `<span class="wt-chip" title="${esc(tilde(S.info.main || ''))} 의 워크트리">${icon('layers')}워크트리</span>` : '') + esc(tilde(S.info.path)) : '';
   if (S.info && $('#sb-repo .repo-ic')?.dataset.repo !== S.info.path + P.repoLogos) { $('#sb-repo .repo-ic').outerHTML = logoHTML(S.info.path); $('#sb-repo .repo-ic').dataset.repo = S.info.path + P.repoLogos; }
   const cur = local.find((r) => r.name === head);
   $('#sb-branch').innerHTML = `${icon('branch')}<span class="nm">${esc(head || (S.info?.head ? 'detached ' + S.info.head.slice(0, 7) : '—'))}</span>${cur ? trackHTML(cur.track) : ''}${icon('chev-down')}`;
@@ -1247,10 +1249,14 @@ async function worktreeGuard(args, label) {
 /** @param {string} action @param {Record<string, any>} [args] @param {RunOptions} [opts] @returns {Promise<boolean>} */
 async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
   if (action === 'checkout' && S.info?.worktree && P.worktreeGuard && !force && !quiet) { worktreeGuard(args, label); return false; }
-  if (action === 'checkout' && args.kind !== 'commit') {
-    const local = args.kind === 'remote' ? args.ref.slice(args.ref.indexOf('/') + 1) : args.ref;
+  let detachedFor = null; // origin/x while local x lives in another worktree → stay here, check out that commit
+  if (action === 'checkout' && args.kind === 'remote' && !args.mode) {
+    const local = args.ref.slice(args.ref.indexOf('/') + 1);
     const wt = otherWorktree(local);
-    if (wt) { worktreeChoice(local, wt.path); return false; }
+    if (wt) { detachedFor = { local, wt, remote: args.ref }; args = { ...args, mode: 'detach' }; }
+  } else if (action === 'checkout' && args.kind === 'branch') {
+    const wt = otherWorktree(args.ref);
+    if (wt) { worktreeChoice(args.ref, wt.path); return false; }
   }
   const btn = document.querySelector(`[data-act="${action}"]`);
   btn?.classList.add('busy');
@@ -1259,6 +1265,13 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
   try {
     const r = await post('action', { repo: S.repo }, { action, args });
     const undo = noUndo ? null : undoFor(action, args, before);
+    if (detachedFor) {
+      const d = detachedFor, sha = S.refs.find((x) => x.type === 'remote' && x.name === d.remote)?.sha;
+      toast(`${d.remote} 위치를 체크아웃했어요 (브랜치 없이)\n로컬 ${d.local} 는 워크트리 '${d.wt.path.split(/[\\/]/).pop()}' 에서 사용 중이라, 이 폴더에서는 그 커밋만 꺼냈습니다. 여기서 커밋하려면 새 브랜치를 만드세요.`, 'ok',
+        [{ label: '새 브랜치 만들기', primary: true, run: () => newBranch(sha || 'HEAD') }, { label: '되돌리기', run: undoFor(action, args, before) || (() => {}) }]);
+      S.lastUndo = { fn: undoFor(action, args, before), label: label || action, at: Date.now() };
+      return true;
+    }
     const warn = /^⚠/.test(r.output || '');
     if (!quiet || warn) toast(warn ? r.output.trim().slice(0, 900) : (label || action) + ' 완료' + (r.output?.trim() ? '\n' + r.output.trim().slice(-500) : ''), warn ? 'err' : 'ok',
       undo ? [{ label: '되돌리기 (⌘Z)', run: undo }] : []);
@@ -1723,7 +1736,7 @@ async function settingsBody(sec) {
     ${optRow('자동 가져오기', '주기적으로 fetch 해서 ↑↓ 를 최신으로 유지', optSeg('autoFetch', [[0, '끔'], [5, '5분'], [15, '15분'], [30, '30분']]))}
     ${optRow('가져올 때 정리 (prune)', '원격에서 지워진 브랜치를 로컬 목록에서도 지움', optToggle('fetchPrune'))}
     ${optRow('풀 방식', 'git 설정 기본값 / 머지 / 리베이스 / 빨리감기만', optSeg('pullMode', [['default', '기본'], ['merge', '머지'], ['rebase', '리베이스'], ['ff-only', 'FF만']]))}
-    ${optRow('워크트리 보호', '워크트리 탭에서는 더블클릭으로 브랜치가 바뀌지 않고, 전환할 땐 먼저 물어봅니다', optToggle('worktreeGuard'))}
+    ${optRow('워크트리에서 전환 전에 확인', '켜면 워크트리 탭에서는 더블클릭으로 전환되지 않고, 전환할 때 먼저 물어봅니다 (기본: 끔)', optToggle('worktreeGuard'))}
     ${optRow('스태시에 새 파일 포함', 'git stash -u', optToggle('stashUntracked'))}
     ${optRow('푸시 전에 확인', '', optToggle('confirmPush'))}
     <p class="opt-note">머지·리베이스·리셋·삭제는 항상 확인 창이 뜨고, 실행 후 토스트의 <b>되돌리기</b> 또는 <kbd>⌘Z</kbd> 로 취소할 수 있어요.</p>`;
