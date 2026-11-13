@@ -179,7 +179,10 @@ if (!app.requestSingleInstanceLock()) {
         { role: 'editMenu' },
         {
           label: 'View',
-          submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }],
+          submenu: [
+            { label: '새로고침', accelerator: 'CmdOrCtrl+R', click: () => win?.webContents.executeJavaScript('window.grRefresh && window.grRefresh()').catch(() => {}) },
+            { label: '강제 새로고침 (화면 다시 불러오기)', accelerator: 'CmdOrCtrl+Shift+R', click: () => win?.webContents.reloadIgnoringCache() },
+            { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }],
         },
         { role: 'windowMenu' },
       ]))

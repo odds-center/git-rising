@@ -551,3 +551,23 @@ body.tab-dragging, body.tab-dragging * { cursor: grabbing !important; }
 .tb[data-act=sync] svg, .tb[data-act=undo] svg { color: var(--muted); }
 @media (max-width: 1320px) { .tb[data-act=sync] span, .tb[data-act=undo] span, .tb[data-act=pr] span { display: none; } }
 @media (max-width: 1060px) { #tb-status { display: none; } .tb span { display: none; } .tb { padding: 0 6px; } }
+
+/* ---------- loading ---------- */
+#progress { height: 2px; flex: none; overflow: hidden; background: transparent; margin-top: -2px; position: relative; z-index: 8; }
+#progress i { display: block; height: 100%; width: 34%; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: 0; transform: translateX(-100%); }
+body.busy #progress i { opacity: 1; animation: prog 1.05s cubic-bezier(.4,0,.2,1) infinite; }
+@keyframes prog { from { transform: translateX(-110%); } to { transform: translateX(310%); } }
+#loading { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: var(--bg); animation: ldin .15s ease-out; }
+#loading[hidden] { display: none; }
+@keyframes ldin { from { opacity: 0; } }
+.ld-graph { width: 68px; height: 68px; margin-bottom: 8px; fill: none; stroke-width: 3.2; stroke-linecap: round; }
+.ld-line { stroke-dasharray: 80; stroke-dashoffset: 80; animation: lddraw 1.5s ease-in-out infinite; }
+.ld-line.l1 { stroke: #6b8cff; } .ld-line.l2 { stroke: #b07aff; animation-delay: .22s; }
+.ld-dot { stroke: none; transform-box: fill-box; transform-origin: center; animation: ldpop 1.5s ease-in-out infinite; }
+.ld-dot.d1, .ld-dot.d2, .ld-dot.d4 { fill: #6b8cff; } .ld-dot.d3, .ld-dot.d5 { fill: #b07aff; }
+.ld-dot.d1 { animation-delay: 0s; } .ld-dot.d2 { animation-delay: .18s; } .ld-dot.d3 { animation-delay: .36s; } .ld-dot.d4 { animation-delay: .5s; } .ld-dot.d5 { animation-delay: .62s; }
+@keyframes lddraw { 0% { stroke-dashoffset: 80; } 55%, 80% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -80; } }
+@keyframes ldpop { 0%, 10% { transform: scale(0); opacity: 0; } 35%, 80% { transform: scale(1); opacity: 1; } 100% { transform: scale(.4); opacity: 0; } }
+#ld-title { font-size: 1.15em; font-weight: 600; }
+#ld-sub { color: var(--muted); font-size: .92em; }
+@media (prefers-reduced-motion: reduce) { .ld-line, .ld-dot, body.busy #progress i { animation-duration: 3s; } }

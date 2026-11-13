@@ -24,3 +24,4 @@ type ModalOptions = {
   checkbox?: { label: string; checked: boolean } | null;
 };
 type RunOptions = { label?: string; quiet?: boolean; noUndo?: boolean; force?: boolean };
+interface Window { grRefresh?: () => unknown }

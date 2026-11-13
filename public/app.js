@@ -265,11 +265,29 @@ function applyStatus(st) {
   S.off = S.status.length && S.info?.head ? 1 : 0;
 }
 
-async function loadRepo(repo, { keep = false, open = false } = {}) {
+// loading feedback: a thin progress bar for every load, a full overlay when opening a repository
+let busyCount = 0, overlayTimer = null;
+function busy(on) {
+  busyCount = Math.max(0, busyCount + (on ? 1 : -1));
+  document.body.classList.toggle('busy', busyCount > 0);
+}
+function showOverlay(repo) {
+  clearTimeout(overlayTimer);
+  overlayTimer = setTimeout(() => { // only if it takes long enough to notice
+    $('#ld-title').textContent = nfc(repo.split(/[\\/]/).pop());
+    $('#loading').hidden = false;
+  }, 140);
+}
+function hideOverlay() { clearTimeout(overlayTimer); $('#loading').hidden = true; }
+
+async function loadRepo(repo, { keep = false, open = false, manual = false } = {}) {
   if (!repo) return;
   const switching = repo !== S.repo;
   S.repo = repo;
   setLoading('불러오는 중…');
+  busy(true);
+  if (switching) showOverlay(repo);
+  if (manual) $('[data-act=reload]')?.classList.add('busy');
   try {
     const limit = keep ? Math.min(5000, Math.max(600, S.commits.length)) : 600;
     if (switching) S.solo = null;
@@ -295,7 +313,11 @@ async function loadRepo(repo, { keep = false, open = false } = {}) {
     $('#empty').hidden = true;
   } catch (e) {
     if (S.repo === repo) showEmpty(e.message);
-  } finally { setLoading(''); }
+  } finally {
+    setLoading(''); busy(false);
+    if (S.repo === repo || !S.repo) hideOverlay();
+    if (manual) { $('[data-act=reload]')?.classList.remove('busy'); if (S.repo === repo) toast('새로고침했어요', 'ok'); }
+  }
 }
 
 function rebuild() {
@@ -316,7 +338,7 @@ function relayout() {
 async function loadMore() {
   if (!S.hasMore || S.loadingMore) return;
   S.loadingMore = true;
-  setLoading('더 불러오는 중…');
+  setLoading('더 불러오는 중…'); busy(true);
   try {
     const repo = S.repo;
     const log = await api('log', { repo, skip: S.commits.length, limit: 2000, ...logParams() });
@@ -328,7 +350,7 @@ async function loadMore() {
     S.L.push(log.commits);
     relayout();
   } catch (e) { toast(e.message, 'err'); }
-  finally { S.loadingMore = false; setLoading(''); }
+  finally { S.loadingMore = false; setLoading(''); busy(false); }
 }
 async function ensureLoaded(sha) {
   for (let i = 0; i < 40 && vIndex(sha) < 0 && S.hasMore; i++) await loadMore();
@@ -1233,6 +1255,7 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
   const btn = document.querySelector(`[data-act="${action}"]`);
   btn?.classList.add('busy');
   const before = snapshotState();
+  busy(true);
   try {
     const r = await post('action', { repo: S.repo }, { action, args });
     const undo = noUndo ? null : undoFor(action, args, before);
@@ -1251,6 +1274,7 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
     toast((label || action) + ' 실패\n' + e.message.slice(0, 900) + hint, 'err', auth ? [{ label: '원격 · 연결 설정', primary: true, run: () => openSettings('remote') }] : []);
     return false;
   } finally {
+    busy(false);
     btn?.classList.remove('busy');
     if (S.repo) loadRepo(S.repo, { keep: true });
   }
@@ -1346,7 +1370,7 @@ const ACT = {
   head: () => S.info?.head && selectCommit(S.info.head),
   find: () => openFind(),
   remotes: () => setPref('showRemotes', !P.showRemotes),
-  reload: () => loadRepo(S.repo, { keep: true }),
+  reload: () => loadRepo(S.repo, { keep: true, manual: true }),
   web: () => run('openWeb', { kind: 'repo' }, { quiet: true, noUndo: true }),
   pr: () => run('openWeb', { kind: 'pr' }, { quiet: true, noUndo: true }),
   extTerminal: () => run('terminal', {}, { quiet: true }),
@@ -2106,7 +2130,7 @@ function bind() {
     if (mod && e.altKey && e.code === 'KeyF') { e.preventDefault(); $('#sb-filter').focus(); return; }
     if (mod && e.key === 'f') { e.preventDefault(); openFind(); return; }
     if (mod && e.key === 'z' && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) { e.preventDefault(); if (S.lastUndo) { const u = S.lastUndo; S.lastUndo = null; u.fn(); } else toast('되돌릴 작업이 없어요'); return; }
-    if (mod && e.key === 'r') { e.preventDefault(); S.repo && loadRepo(S.repo, { keep: true }); return; }
+    if ((mod && e.key.toLowerCase() === 'r') || e.key === 'F5') { e.preventDefault(); window.grRefresh(); return; }
     if (mod && e.key === 'w') { e.preventDefault(); S.repo && closeTab(S.repo); return; }
     if (mod && /^[1-9]$/.test(e.key)) { const t = S.tabs[+e.key - 1]; if (t && t !== S.repo) loadRepo(t).then(saveTabs).then(renderTabs); e.preventDefault(); return; }
     if (e.key === 'Escape') { if ($('#menu-layer').children.length) closeMenus(); else if (!$('#diff-view').hidden) closeDiff(); else if (!$('#findbar').hidden) closeFind(); return; }
@@ -2389,6 +2413,7 @@ function bindColumnResize() {
   applyTheme();
   bind(); bindTips(); bindColumnResize(); bindTerminal(); connectBus();
   window.gittreeOpen = (p) => openTab(p);
+  window.grRefresh = () => S.repo && loadRepo(S.repo, { keep: true, manual: true });
   const [ver, def] = await Promise.all([api('version').catch(() => ({})), api('default').catch(() => ({}))]);
   S.version = ver.version; S.platform = ver.platform; S.homeDir = def.home || '';
   renderDetail(); renderStatusbar(); startAi();

@@ -51,6 +51,7 @@
     <span id="tb-status"></span>
   </div>
 
+  <div id="progress"><i></i></div>
   <div id="banner" hidden></div>
 
   <main id="main">
@@ -97,6 +98,13 @@
         <div id="diff-body"></div>
       </div>
       <div id="empty" hidden></div>
+      <div id="loading" hidden>
+        <svg class="ld-graph" viewBox="0 0 64 64" aria-hidden="true">
+          <path class="ld-line l1" d="M22 54V10"/><path class="ld-line l2" d="M22 42c0-10 20-6 20-18V10"/>
+          <circle class="ld-dot d1" cx="22" cy="54" r="5"/><circle class="ld-dot d2" cx="22" cy="32" r="5"/><circle class="ld-dot d3" cx="42" cy="24" r="5"/><circle class="ld-dot d4" cx="22" cy="10" r="5"/><circle class="ld-dot d5" cx="42" cy="10" r="5"/>
+        </svg>
+        <div id="ld-title"></div><div id="ld-sub">커밋을 불러오는 중…</div>
+      </div>
       <div id="term-panel" hidden>
         <div class="term-rz" title="드래그해서 높이 조절"></div>
         <div id="term-head"><div id="term-tabs" style="display:flex;gap:2px;overflow:auto"></div>
