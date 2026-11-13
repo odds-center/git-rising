@@ -697,3 +697,14 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
 .dl.add .ln, .fl.add .ln { background: color-mix(in srgb, var(--add) 11%, var(--bg)); }
 .dl.del .ln, .fl.del .ln { background: color-mix(in srgb, var(--del) 11%, var(--bg)); }
 .dl.hunk .ln { background: color-mix(in srgb, var(--accent) 9%, var(--bg)); }
+
+/* branch chip of a branch that is checked out in another worktree */
+.pill .p-wt { display: inline-flex; color: #5fae7c; }
+.pill .p-wt svg { width: 11px; height: 11px; stroke-width: 2.2; }
+.pill.in-wt { box-shadow: inset 0 0 0 1px color-mix(in srgb, #5fae7c 45%, transparent); }
+
+/* a commit that another worktree has checked out */
+.wt-at { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px 0 5px; margin-right: 7px; border-radius: 9px; font-size: .82em; font-weight: 700; vertical-align: 1px; cursor: pointer;
+  color: #5fae7c; background: color-mix(in srgb, #5fae7c 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #5fae7c 40%, transparent); }
+.wt-at svg { width: 11px; height: 11px; stroke-width: 2.2; }
+.wt-at:hover { background: #5fae7c; color: #0f1a13; }

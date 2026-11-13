@@ -462,10 +462,11 @@ function refLabels(sha) {
 }
 function pillHTML(r, color) {
   const isHead = r.type === 'branch' && r.name === S.info?.branch;
-  const ic = r.type === 'tag' ? icon('tag') : isHead ? icon('check') : r.type === 'remote' ? icon('cloud') : '';
+  const wt = r.type === 'branch' && !isHead ? otherWorktree(r.name) : null; // checked out in another worktree
+  const ic = r.type === 'tag' ? icon('tag') : isHead ? icon('check') : wt ? `<span class="p-wt">${icon('tree')}</span>` : r.type === 'remote' ? icon('cloud') : '';
   const cloud = r.type === 'branch' && r.remotes?.length ? icon('cloud') : '';
   const tip = [r.type === 'tag' ? '태그 ' + r.name : r.name, ...(r.remotes || []).filter((x) => x !== r.name)].join('\n');
-  return `<span class="pill ${r.type}${isHead ? ' head' : ''}" style="--pc:${color}" data-ref="${esc(r.type)}:${esc(r.name)}">${ic}<span class="t">${escN(r.name)}</span>${cloud}</span>`;
+  return `<span class="pill ${r.type}${isHead ? ' head' : ''}${wt ? ' in-wt' : ''}" style="--pc:${color}" data-ref="${esc(r.type)}:${esc(r.name)}">${ic}<span class="t">${escN(r.name)}</span>${cloud}</span>`;
 }
 const pool = [];
 let poolSize = 0;
@@ -482,7 +483,7 @@ function fillRow(el, v) {
   }
   el.innerHTML = c.wip
     ? `<div class="c-ref"></div><div class="c-graph"></div><div class="c-msg"><span class="wip">커밋 안 한 변경 ${S.status.length}개</span></div><div></div><div></div><div></div>`
-    : `<div class="c-ref">${ref}</div><div class="c-graph"></div><div class="c-msg">${c.sha === S.info?.head ? `<span class="here" title="지금 체크아웃된 위치 (HEAD)">${icon('checkout')}현재 위치</span>` : ''}${escN(c.subject)}</div><div class="c-author">${escN(c.author)}</div><div class="c-date" title="${fmtDate(c.time)}">${P.dateMode === 'absolute' ? fmtDate(c.time).slice(2) : relDate(c.time)}</div><div class="c-sha">${c.sha.slice(0, 7)}</div>`;
+    : `<div class="c-ref">${ref}</div><div class="c-graph"></div><div class="c-msg">${c.sha === S.info?.head ? `<span class="here" title="지금 체크아웃된 위치 (HEAD)">${icon('checkout')}현재 위치</span>` : ''}${worktreesAt(c.sha).map((w) => `<span class="wt-at" data-open-wt="${esc(w.path)}" title="워크트리 '${esc(w.path.split(/[\\/]/).pop())}' 가 여기를 체크아웃하고 있어요${w.branch ? ' (' + esc(w.branch) + ')' : ''}\n눌러서 탭으로 열기">${icon('tree')}${escN(w.path.split(/[\\/]/).pop())}</span>`).join('')}${escN(c.subject)}</div><div class="c-author">${escN(c.author)}</div><div class="c-date" title="${fmtDate(c.time)}">${P.dateMode === 'absolute' ? fmtDate(c.time).slice(2) : relDate(c.time)}</div><div class="c-sha">${c.sha.slice(0, 7)}</div>`;
 }
 function headCol() { const i = S.index.get(S.info?.head); return i == null ? 0 : S.L.rows[i].col; }
 
@@ -1335,6 +1336,8 @@ function divergedChoice(d, args, label) {
 }
 
 // A branch can only be checked out in one worktree at a time (git rule).
+// other worktrees whose checkout (HEAD) is this commit
+const worktreesAt = (sha) => (S.meta.worktrees || []).filter((w) => w.head === sha && w.path !== S.info?.path);
 const otherWorktree = (branch) => (S.meta.worktrees || []).find((w) => w.branch === branch && w.path !== S.info?.path);
 /** @param {string} action @param {Record<string, any>} [args] @param {RunOptions} [opts] @returns {Promise<boolean>} */
 async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
@@ -2124,6 +2127,7 @@ function bind() {
     showRefPop(row); const p = $('#refpop'); if (p) p.dataset.v = row.dataset.v;
   });
   sc.addEventListener('scroll', hideRefPop, { passive: true });
+  rows.addEventListener('click', (e) => { const b = e.target.closest('[data-open-wt]'); if (b) { e.stopPropagation(); openTab(b.dataset.openWt); } });
   rows.addEventListener('mousedown', (e) => { const r = e.target.closest('.row'); if (r && e.button === 0) { selectCommit(rowAt(+r.dataset.v).sha, { scroll: false }); sc.focus(); } });
   rows.addEventListener('dblclick', (e) => {
     const p = e.target.closest('[data-ref]'); if (!p) return;
