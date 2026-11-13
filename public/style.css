@@ -571,3 +571,26 @@ body.busy #progress i { opacity: 1; animation: prog 1.05s cubic-bezier(.4,0,.2,1
 #ld-title { font-size: 1.15em; font-weight: 600; }
 #ld-sub { color: var(--muted); font-size: .92em; }
 @media (prefers-reduced-motion: reduce) { .ld-line, .ld-dot, body.busy #progress i { animation-duration: 3s; } }
+
+/* ---------- side-by-side panes (each scrolls sideways; kept in sync) ---------- */
+#diff-body.panes { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+.pane { overflow: auto; min-width: 0; position: relative; }
+.pane + .pane { border-left: 1px solid var(--border2); }
+.pane-h { position: sticky; top: 0; left: 0; z-index: 2; padding: 4px 12px; background: var(--panel); border-bottom: 1px solid var(--border); font: 600 11px var(--sans); }
+.pane-h.old { color: var(--del); } .pane-h.new { color: var(--add); }
+.pane-in { min-width: max-content; }
+.pl { display: grid; grid-template-columns: 46px 1fr; height: 1.6em; }
+.pl .ln { color: var(--dim); text-align: right; padding: 0 8px; user-select: none; -webkit-user-select: none; position: sticky; left: 0; background: var(--bg); z-index: 1; }
+.pl .tx { white-space: pre; padding: 0 14px 0 10px; }
+.pl.del { background: color-mix(in srgb, var(--del) 13%, transparent); } .pl.del .ln { background: color-mix(in srgb, var(--del) 13%, var(--bg)); }
+.pl.add { background: color-mix(in srgb, var(--add) 13%, transparent); } .pl.add .ln { background: color-mix(in srgb, var(--add) 13%, var(--bg)); }
+.pl.none { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--hover) 6px 7px); }
+.pl.none .ln { background: transparent; }
+.pl.hunk { background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--accent); } .pl.hunk .ln { background: color-mix(in srgb, var(--accent) 9%, var(--bg)); }
+.pl.meta { color: var(--muted); }
+
+/* ---------- toolbar count chips: high contrast in both themes ---------- */
+.tb .cnt { min-width: 18px; height: 17px; padding: 0 5px; border-radius: 9px; font: 700 10.5px/17px var(--sans); letter-spacing: 0; color: #fff; background: #5b6cff; }
+#cnt-pull { background: #e0730d; color: #fff; }
+#cnt-push { background: #5b6cff; color: #fff; }
+#cnt-stash { background: #6b7280; color: #fff; }

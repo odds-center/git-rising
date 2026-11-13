@@ -788,7 +788,7 @@ function renderDiffHead(f, textish, canPreview, mode) {
     showMode(b.dataset.mode);
   }));
   const wrap = $('#diff-wrap');
-  if (wrap) { wrap.checked = LS.get('wrap', false); $('#diff-body').classList.toggle('wrap', wrap.checked); wrap.onchange = () => { LS.set('wrap', wrap.checked); $('#diff-body').classList.toggle('wrap', wrap.checked); }; }
+  if (wrap) { wrap.checked = LS.get('wrap', false); $('#diff-body').classList.toggle('wrap', wrap.checked); wrap.onchange = () => { LS.set('wrap', wrap.checked); $('#diff-body').classList.toggle('wrap', wrap.checked); const m = $('#diff-head [data-mode].on')?.dataset.mode; if (m === 'split') showMode('split'); }; }
 }
 async function openExternal(f) {
   const d = S.detail;
@@ -911,20 +911,58 @@ function renderSplit(patch, truncated, f) {
   if (binaryNote(patch)) return;
   const rows = parsePatch(patch);
   const lang = rows.length < 6000 ? langOf(f.path) : null;
-  const out = [];
-  const cell = (r, side) => (r ? `<span class="ln">${side === 'l' ? r.o ?? '' : r.n ?? ''}</span><span class="tx ${r.type}">${hlLine(r.text, lang)}</span>` : '<span class="ln"></span><span class="tx none"></span>');
+  const body = $('#diff-body');
+  const wrap = LS.get('wrap', false);
+  const code = (r) => hlLine(r.text, lang);
+  if (wrap) {
+    // wrapped lines differ in height → keep both sides in one grid row so they stay aligned
+    const out = [];
+    const cell = (r, side) => (r ? `<span class="ln">${side === 'l' ? r.o ?? '' : r.n ?? ''}</span><span class="tx ${r.type}">${code(r)}</span>` : '<span class="ln"></span><span class="tx none"></span>');
+    for (let i = 0; i < rows.length; ) {
+      const r = rows[i];
+      if (r.type === 'hunk' || r.type === 'meta') { out.push(`<div class="sl ${r.type}"><span class="full">${esc(r.text)}</span></div>`); i++; continue; }
+      if (r.type === 'ctx') { out.push(`<div class="sl">${cell(r, 'l')}${cell(r, 'r')}</div>`); i++; continue; }
+      const dels = [], adds = [];
+      while (rows[i]?.type === 'del') dels.push(rows[i++]);
+      while (rows[i]?.type === 'add') adds.push(rows[i++]);
+      for (let k = 0; k < Math.max(dels.length, adds.length); k++) out.push(`<div class="sl">${cell(dels[k], 'l')}${cell(adds[k], 'r')}</div>`);
+    }
+    if (truncated) out.push('<div class="diff-note">diff 가 너무 커서 일부만 표시합니다</div>');
+    body.innerHTML = `<div class="split-head"><span>이전</span><span>이후</span></div>` + out.join('');
+    body.scrollTop = 0;
+    return;
+  }
+  // Two panes with the same number of equally tall lines. Each pane scrolls sideways on its own
+  // scrollbar and the two are kept in sync (both directions), like a regular side-by-side diff.
+  const L = [], R = [];
+  const line = (r, side) => (r
+    ? `<div class="pl ${r.type}"><span class="ln">${side === 'l' ? r.o ?? '' : r.n ?? ''}</span><span class="tx">${code(r) || ' '}</span></div>`
+    : '<div class="pl none"><span class="ln"></span><span class="tx"> </span></div>');
   for (let i = 0; i < rows.length; ) {
     const r = rows[i];
-    if (r.type === 'hunk' || r.type === 'meta') { out.push(`<div class="sl ${r.type}"><span class="full">${esc(r.text)}</span></div>`); i++; continue; }
-    if (r.type === 'ctx') { out.push(`<div class="sl">${cell(r, 'l')}${cell(r, 'r')}</div>`); i++; continue; }
+    if (r.type === 'hunk' || r.type === 'meta') {
+      const h = `<div class="pl ${r.type}"><span class="ln"></span><span class="tx">${esc(r.text)}</span></div>`;
+      L.push(h); R.push(`<div class="pl ${r.type}"><span class="ln"></span><span class="tx"> </span></div>`); i++; continue;
+    }
+    if (r.type === 'ctx') { L.push(line(r, 'l')); R.push(line(r, 'r')); i++; continue; }
     const dels = [], adds = [];
     while (rows[i]?.type === 'del') dels.push(rows[i++]);
     while (rows[i]?.type === 'add') adds.push(rows[i++]);
-    for (let k = 0; k < Math.max(dels.length, adds.length); k++) out.push(`<div class="sl">${cell(dels[k], 'l')}${cell(adds[k], 'r')}</div>`);
+    for (let k = 0; k < Math.max(dels.length, adds.length); k++) { L.push(line(dels[k], 'l')); R.push(line(adds[k], 'r')); }
   }
-  if (truncated) out.push('<div class="diff-note">diff 가 너무 커서 일부만 표시합니다</div>');
-  $('#diff-body').innerHTML = `<div class="split-head"><span>이전</span><span>이후</span></div>` + out.join('');
-  $('#diff-body').scrollTop = 0;
+  const note = truncated ? '<div class="diff-note">diff 가 너무 커서 일부만 표시합니다</div>' : '';
+  body.classList.add('panes');
+  body.innerHTML = `<div class="pane" data-pane="l"><div class="pane-h old">이전</div><div class="pane-in">${L.join('')}</div>${note}</div><div class="pane" data-pane="r"><div class="pane-h new">이후</div><div class="pane-in">${R.join('')}</div>${note}</div>`;
+  const [a, b] = body.querySelectorAll('.pane');
+  let lock = null;
+  const sync = (src, dst) => () => {
+    if (lock === dst) return; // this scroll was caused by us mirroring the other pane
+    lock = src;
+    dst.scrollTop = src.scrollTop; dst.scrollLeft = src.scrollLeft;
+    requestAnimationFrame(() => { lock = null; });
+  };
+  a.addEventListener('scroll', sync(a, b), { passive: true });
+  b.addEventListener('scroll', sync(b, a), { passive: true });
 }
 function renderFull(text, patch, f, side) {
   const changed = new Set(parsePatch(patch || '').filter((r) => (side === 'new' ? r.type === 'add' : r.type === 'del')).map((r) => (side === 'new' ? r.n : r.o)));

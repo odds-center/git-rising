@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 const RUNTIME = path.join(os.homedir(), '.config', 'git-rising', 'runtime.json');
-const VERSION = '0.2.10';
+const VERSION = '0.2.11';
 let base = null, headless = false;
 
 function appRuntime() {
