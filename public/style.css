@@ -608,3 +608,33 @@ body.busy #progress i { opacity: 1; animation: prog 1.05s cubic-bezier(.4,0,.2,1
 select.field { appearance: none; -webkit-appearance: none; height: 32px; color: var(--text); font: inherit; }
 .d-as { margin-top: 6px; color: var(--muted); font-size: .9em; }
 .d-as b { color: var(--text2); }
+
+/* ---------- stashes in the detail panel ---------- */
+.st-sec { margin: 6px 8px 14px; border-radius: 10px; background: var(--elev2); box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
+.st-h { display: flex; align-items: center; gap: 7px; width: 100%; height: 30px; padding: 0 10px; color: var(--text2); text-align: left; }
+.st-h:hover { color: var(--text); }
+.st-h > svg { width: 13px; height: 13px; color: var(--mod); }
+.st-h .cnt { font-size: 10.5px; font-weight: 700; padding: 0 6px; border-radius: 9px; line-height: 16px; background: #6b7280; color: #fff; }
+.st-hint { margin-left: auto; color: var(--dim); font-size: .86em; }
+.st-it { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-top: 1px solid var(--border); }
+.st-it:hover { background: var(--hover); }
+.st-it.selected { background: var(--sel); box-shadow: inset 2px 0 0 var(--sel-line); }
+.st-tx { flex: 1; min-width: 0; }
+.st-t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-d { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: .88em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-d svg { width: 10px; height: 10px; }
+.st-b { display: flex; gap: 4px; align-items: center; flex: none; opacity: .55; }
+.st-it:hover .st-b, .st-it.selected .st-b { opacity: 1; }
+.st-b .ib { width: 22px; height: 22px; }
+.st-b .ib:hover { color: var(--del); }
+.st-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--mod); background: color-mix(in srgb, var(--mod) 16%, transparent); }
+.st-badge svg { width: 10px; height: 10px; }
+.st-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.d-as { display: flex; align-items: center; gap: 5px; }
+.d-as svg { width: 11px; height: 11px; }
+
+/* busy buttons: only the circular icons (fetch / refresh) spin; arrows and others pulse instead */
+.tb.busy svg { animation: none; }
+.tb[data-act=fetch].busy svg, .tb[data-act=reload].busy svg { animation: spin .9s linear infinite; }
+.tb.busy:not([data-act=fetch]):not([data-act=reload]) { animation: tbpulse 1s ease-in-out infinite; background: var(--active); }
+@keyframes tbpulse { 50% { opacity: .5; } }

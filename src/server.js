@@ -326,11 +326,8 @@ async function apiRefs(q) {
     } else (type = 'tag'), (name = ref.slice(10));
     refs.push({ type, name, sha, upstream: upstream || null, track: track || null });
   }
-  let stashes = 0;
-  try {
-    stashes = (await git(repo, ['stash', 'list'])).split('\n').filter(Boolean).length;
-  } catch {}
-  return { refs, stashes };
+  const stashList = await listStashes(repo);
+  return { refs, stashes: stashList.length, stashList };
 }
 
 function parseNameStatusZ(out) {
@@ -582,10 +579,35 @@ async function apiClone(_q, body) {
 }
 
 const stashIndex = (i) => { const n = parseInt(i); if (!(n >= 0 && n < 1000)) throw httpError(400, 'bad stash index'); return n; };
+async function listStashes(repo) {
+  const out = await git(repo, ['stash', 'list', '--format=%gd%x00%ct%x00%gs%x00%H']).catch(() => '');
+  return out.split('\n').filter(Boolean).map((l) => {
+    const [ref, time, msg, sha] = l.split('\x00');
+    const m = msg.match(/^(?:WIP on|On) ([^:]+): ?(.*)$/);
+    return { index: +(ref.match(/\{(\d+)\}/) || [0, 0])[1], time: +time, message: msg, branch: m ? m[1] : '', title: m ? m[2] : msg, sha };
+  });
+}
 async function apiStashes(q) {
+  return { stashes: await listStashes(await resolveRepo(q.repo)) };
+}
+// What a stash holds: tracked changes (stash vs its base) + untracked files (kept in a third parent by `stash -u`).
+async function apiStash(q) {
   const repo = await resolveRepo(q.repo);
-  const out = await git(repo, ['stash', 'list', '--format=%gd%x00%ct%x00%gs']).catch(() => '');
-  return { stashes: out.split('\n').filter(Boolean).map((l) => { const [ref, time, msg] = l.split('\x00'); return { index: +(ref.match(/\{(\d+)\}/) || [0, 0])[1], time: +time, message: msg }; }) };
+  const st = (await listStashes(repo)).find((x) => x.index === stashIndex(q.index));
+  if (!st) throw httpError(404, '그 스태시는 이제 없어요');
+  const parents = (await git(repo, ['rev-list', '--parents', '-n1', st.sha])).trim().split(' ').slice(1);
+  const base = parents[0];
+  const [ns, nums] = await Promise.all([
+    git(repo, ['diff-tree', '-r', '-M', '--no-commit-id', '--name-status', '-z', base, st.sha]),
+    git(repo, ['diff-tree', '-r', '-M', '--no-commit-id', '--numstat', '-z', base, st.sha]),
+  ]);
+  const stats = parseNumstatZ(nums);
+  const files = parseNameStatusZ(ns).map((f) => ({ ...f, ...(stats.get(f.path) || {}), srcSha: st.sha, srcParent: base }));
+  if (parents[2]) { // untracked files
+    const un = await git(repo, ['diff-tree', '-r', '--root', '--no-commit-id', '--name-status', '-z', parents[2]]).catch(() => '');
+    for (const f of parseNameStatusZ(un)) files.push({ ...f, status: '?', srcSha: parents[2], srcParent: '' });
+  }
+  return { ...st, base, files };
 }
 
 /** Every write the UI / MCP can ask for. @type {Record<string, (repo: string, args?: any) => Promise<any>>} */
@@ -1605,6 +1627,7 @@ const routes = {
   '/api/aiusage': apiAiUsage,
   '/api/identity': apiIdentity,
   '/api/stashes': apiStashes,
+  '/api/stash': apiStash,
   '/api/shelltools': async (_q, body) => (body ? shellToolsAction(body) : apiShellTools()),
   // UI state (tabs, preferences, column widths). Kept in a file because the app's origin
   // (127.0.0.1:<random port>) changes every launch, which would orphan localStorage.

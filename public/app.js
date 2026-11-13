@@ -268,7 +268,7 @@ const vIndex = (sha) => (sha === 'WIP' ? (S.off ? 0 : -1) : S.index.has(sha) ? S
 const WIP_ROW = { sha: 'WIP', parents: [], subject: '', author: '', email: '', time: 0, wip: true };
 
 function applyRefs(refs) {
-  S.refs = refs.refs; S.stashes = refs.stashes;
+  S.refs = refs.refs; S.stashes = refs.stashes; S.stashList = refs.stashList || [];
   S.refsBySha = new Map(); S.labelCache = new Map();
   for (const r of S.refs) { if (!S.refsBySha.has(r.sha)) S.refsBySha.set(r.sha, []); S.refsBySha.get(r.sha).push(r); }
 }
@@ -322,6 +322,7 @@ async function loadRepo(repo, { keep = false, open = false, manual = false } = {
     renderTabs(); renderSidebar(); renderBanner(); renderStatusbar(); renderActions();
     if (switching || !ID.data) loadIdentity();
     if (S.selected && vIndex(S.selected) < 0) S.selected = null;
+    if (S.detail?.stash && !S.stashList.some((x) => x.sha === S.detail.stash.sha)) { S.detail = null; closeDiff(); }
     if (S.selected) selectCommit(S.selected, { scroll: false, force: true }); else renderDetail();
     $('#empty').hidden = true;
   } catch (e) {
@@ -721,16 +722,55 @@ function statsHTML(files) {
   return `<div class="d-stats">${c.M ? `<span class="m">수정 ${c.M}</span>` : ''}${c.A ? `<span class="a">추가 ${c.A}</span>` : ''}${c.D ? `<span class="d">삭제 ${c.D}</span>` : ''}${c.R ? `<span class="r">이동 ${c.R}</span>` : ''}
     <div class="seg"><button data-fv="path" class="${S.fileView === 'path' ? 'on' : ''}">경로</button><button data-fv="tree" class="${S.fileView === 'tree' ? 'on' : ''}">폴더</button></div></div>`;
 }
+// Stashes live in the right panel so they are never forgotten: list → click to preview → apply / pop / drop.
+function stashSectionHTML() {
+  const list = S.stashList || [];
+  if (!list.length) return '';
+  const open = !S.collapsed.has('stash-panel');
+  return `<div class="st-sec"><button class="st-h${open ? '' : ' collapsed'}" data-st-fold><span class="chev">${icon('chev-down')}</span>${icon('archive')}<b>스태시</b><span class="cnt">${list.length}</span><span class="st-hint">임시 보관한 변경</span></button>
+    ${open ? list.map((st) => `<div class="st-it${S.detail?.stash?.index === st.index ? ' selected' : ''}" data-st="${st.index}" title="${esc(st.message)}\n눌러서 내용 미리보기">
+      <div class="st-tx"><div class="st-t">${escN(st.title || '(메시지 없음)')}</div><div class="st-d">${icon('branch')}${escN(st.branch || '?')} · ${relDate(st.time)}</div></div>
+      <div class="st-b"><button class="btn sm" data-st-act="stashApply" data-i="${st.index}" title="적용 (스태시는 남김) — git stash apply">적용</button><button class="btn sm primary" data-st-act="stashPop" data-i="${st.index}" title="꺼내기 (적용 후 삭제) — git stash pop">꺼내기</button><button class="ib" data-st-act="stashDrop" data-i="${st.index}" title="삭제 — git stash drop">${icon('trash')}</button></div></div>`).join('') : ''}</div>`;
+}
+async function openStash(index) {
+  try {
+    const st = await api('stash', { repo: S.repo, index });
+    S.selected = null;
+    S.detail = { stash: st, sha: st.sha, parents: [st.base], files: st.files };
+    closeDiff(); renderRows(); renderDetail();
+  } catch (e) { toast(e.message, 'err'); loadRepo(S.repo, { keep: true }); }
+}
+function stashAction(action, index) {
+  const st = (S.stashList || []).find((x) => x.index === index);
+  const done = () => { if (S.detail?.stash) { S.detail = null; closeDiff(); } };
+  if (action === 'stashDrop') return modal({ title: '스태시 삭제', text: `${st?.message || ''}\n\n이 스태시를 버립니다. 되돌릴 수 없어요.`, ok: '삭제', danger: true }).then((r) => { if (r) { done(); run('stashDrop', { index }, { label: '스태시 삭제' }); } });
+  done();
+  run(action, { index }, { label: action === 'stashPop' ? '스태시 꺼내기' : '스태시 적용' });
+}
+
 function renderDetail() {
   const el = $('#detail'), d = S.detail;
-  if (!d) { el.innerHTML = `<div class="placeholder">커밋을 선택하세요<br><br><kbd>↑</kbd> <kbd>↓</kbd> 로 이동 · 우클릭으로 작업</div>`; return; }
+  if (!d) { el.innerHTML = `<div class="placeholder">커밋을 선택하세요<br><br><kbd>↑</kbd> <kbd>↓</kbd> 로 이동 · 우클릭으로 작업</div>${stashSectionHTML()}`; return; }
+  if (d.stash) {
+    const st = d.stash;
+    S.detailFiles = d.files;
+    el.innerHTML = `<div class="d-head"><div class="d-meta"><span class="badge st-badge">${icon('archive')} 스태시</span><span>${relDate(st.time)}</span><span class="grow"></span><button class="ib" data-st-close title="닫기">${icon('x')}</button></div>
+      <h2 class="d-subject">${escN(st.title || '(메시지 없음)')}</h2>
+      <div class="d-as">${icon('branch')} ${escN(st.branch || '?')} 에서 보관 · ${fmtDate(st.time)}</div>
+      <div class="st-actions"><button class="btn sm primary" data-st-act="stashPop" data-i="${st.index}">${icon('unarchive')} 꺼내기</button><button class="btn sm" data-st-act="stashApply" data-i="${st.index}">적용 (남겨두기)</button><button class="btn sm" data-st-act="stashDrop" data-i="${st.index}">${icon('trash')} 삭제</button></div></div>
+      ${statsHTML(d.files)}
+      ${d.files.length ? fileListHTML(d.files) : '<div class="placeholder">변경된 파일 없음</div>'}
+      ${stashSectionHTML()}`;
+    return;
+  }
   if (d.wip) {
     const staged = S.status.filter((f) => f.staged), rest = S.status.filter((f) => !f.staged);
     S.detailFiles = [...staged, ...rest];
     el.innerHTML = `<div class="d-head"><div class="d-meta"><span class="badge">작업 중</span>${esc(S.info?.branch || 'detached')}</div><h2 class="d-subject">커밋 안 한 변경사항</h2>${ID.data?.effective?.email ? `<div class="d-as">커밋하면 <b>${escN(ID.data.effective.name)}</b> &lt;${esc(ID.data.effective.email)}&gt; 로 기록됩니다</div>` : ''}</div>
       ${statsHTML(S.status)}
       ${staged.length ? `<div class="wip-sec" title="git add 된 파일 — 다음 커밋에 들어갑니다">스테이징됨 · ${staged.length}</div>${fileListHTML(staged, 0)}` : ''}
-      ${rest.length ? `<div class="wip-sec" title="아직 git add 하지 않은 변경 / 새 파일">스테이징 안 됨 · ${rest.length}</div>${fileListHTML(rest, staged.length)}` : ''}`;
+      ${rest.length ? `<div class="wip-sec" title="아직 git add 하지 않은 변경 / 새 파일">스테이징 안 됨 · ${rest.length}</div>${fileListHTML(rest, staged.length)}` : ''}
+      ${stashSectionHTML()}`;
     return;
   }
   S.detailFiles = d.files;
@@ -750,14 +790,16 @@ function renderDetail() {
       <div class="par">${d.parents.length ? '부모' : '최초 커밋'}${d.parents.map((p) => `<a data-goto="${p}">${p.slice(0, 7)}</a>`).join('')}</div>
     </div>
     ${statsHTML(d.files)}
-    ${d.files.length ? fileListHTML(d.files) : '<div class="placeholder">변경된 파일 없음</div>'}`;
+    ${d.files.length ? fileListHTML(d.files) : '<div class="placeholder">변경된 파일 없음</div>'}
+    ${stashSectionHTML()}`;
 }
 
 // ================================================================ diff + rich preview
 function blobURL(side, f) {
   const d = S.detail;
   const p = { repo: S.repo, path: side === 'old' ? f.oldPath || f.path : f.path };
-  if (d.wip) p.sha = side === 'old' ? 'HEAD' : 'WIP';
+  if (f.srcSha) p.sha = side === 'old' ? f.srcParent : f.srcSha;
+  else if (d.wip) p.sha = side === 'old' ? 'HEAD' : 'WIP';
   else p.sha = side === 'old' ? d.parents[0] : d.sha;
   return `/api/blob?${new URLSearchParams(p)}`;
 }
@@ -794,7 +836,7 @@ function renderDiffHead(f, textish, canPreview, mode) {
 }
 async function openExternal(f) {
   const d = S.detail;
-  try { await post('openfile', { repo: S.repo }, { sha: d.wip ? 'WIP' : d.sha, path: f.path }); }
+  try { await post('openfile', { repo: S.repo }, { sha: f.srcSha || (d.wip ? 'WIP' : d.sha), path: f.path }); }
   catch (e) { toast(e.message, 'err'); }
 }
 async function getPatch(f) {
@@ -802,7 +844,8 @@ async function getPatch(f) {
   const d = S.detail;
   const params = { repo: S.repo, path: f.path };
   if (f.oldPath) params.oldPath = f.oldPath;
-  if (d.wip) { params.sha = 'WIP'; if (f.status === '?') params.untracked = '1'; }
+  if (f.srcSha) { params.sha = f.srcSha; if (f.srcParent) params.parent = f.srcParent; }
+  else if (d.wip) { params.sha = 'WIP'; if (f.status === '?') params.untracked = '1'; }
   else { params.sha = d.sha; if (d.parents[0]) params.parent = d.parents[0]; }
   const r = await api('diff', params);
   S.diffPatch = { f, r };
@@ -827,7 +870,7 @@ async function showMode(mode) {
       return;
     }
   } catch (e) { body.innerHTML = `<div class="diff-note">${esc(e.message)}</div>`; return; }
-  const hasOld = f.status !== 'A' && f.status !== '?' && !(S.detail.parents?.length === 0 && !S.detail.wip);
+  const hasOld = f.status !== 'A' && f.status !== '?' && !(S.detail.parents?.length === 0 && !S.detail.wip && !S.detail.stash);
   const hasNew = f.status !== 'D';
   const sides = [hasOld && 'old', hasNew && 'new'].filter(Boolean);
   body.innerHTML = `<div class="pv">${sides.map((s) => `<div class="pv-side"><div class="pv-label">${s === 'old' ? '<span class="tag-old">● 이전</span>' : '<span class="tag-new">● 이후</span>'}<span class="pv-meta" data-meta="${s}"></span></div><div class="pv-frame" data-side="${s}"></div></div>`).join('')}</div>`;
@@ -1111,7 +1154,7 @@ function renderSidebar() {
   h += sec('tags', '태그', 'tag', tags.length, tags.filter(match).map((r) => leaf(r, r.name, 0.4)).join(''));
   const wts = S.meta.worktrees || [];
   h += sec('wt', '워크트리', 'layers', wts.length, wts.map((w) => `<div class="it" style="${pad(0.4)}" data-wt="${esc(w.path)}" title="${esc(w.path)}\n클릭: 이 워크트리를 탭으로 열기">${icon('layers')}<span class="nm">${esc(w.branch || w.path.split(/[\\/]/).pop())}</span><span class="ab">${esc(w.path.split(/[\\/]/).pop())}</span></div>`).join(''));
-  h += `<div class="sec" title="git stash list"><span class="chev"></span>${icon('archive')}스태시<span class="cnt">${S.stashes}</span></div>`;
+  h += sec('stash', '스태시', 'archive', S.stashes, (S.stashList || []).map((st) => `<div class="it${S.detail?.stash?.index === st.index ? ' selected' : ''}" style="${pad(0.4)}" data-stash="${st.index}" title="${esc(st.message)}\n눌러서 내용 미리보기">${icon('archive')}<span class="nm">${escN(st.title || '(메시지 없음)')}</span><span class="ab">${relDate(st.time)}</span></div>`).join(''));
   $('#sb-body').innerHTML = h;
 
   // header
@@ -2074,6 +2117,10 @@ function bind() {
     showMenu(commitMenu(c, ref), e.clientX, e.clientY);
   });
   $('#detail').addEventListener('click', (e) => {
+    const sa = e.target.closest('[data-st-act]'); if (sa) { e.stopPropagation(); return stashAction(sa.dataset.stAct, +sa.dataset.i); }
+    if (e.target.closest('[data-st-close]')) { S.detail = null; closeDiff(); return renderDetail(); }
+    if (e.target.closest('[data-st-fold]')) { S.collapsed.has('stash-panel') ? S.collapsed.delete('stash-panel') : S.collapsed.add('stash-panel'); LS.set('collapsed', [...S.collapsed]); return renderDetail(); }
+    const si = e.target.closest('[data-st]'); if (si) return openStash(+si.dataset.st);
     const f = e.target.closest('.file'); if (f) return openDiff(+f.dataset.fi);
     const g = e.target.closest('[data-goto]'); if (g) return selectCommit(g.dataset.goto);
     const cp = e.target.closest('[data-copy]'); if (cp) return copy(cp.dataset.copy);
@@ -2084,7 +2131,8 @@ function bind() {
     const fold = e.target.closest('[data-fold]');
     if (fold) { const k = fold.dataset.fold; S.collapsed.has(k) ? S.collapsed.delete(k) : S.collapsed.add(k); LS.set('collapsed', [...S.collapsed]); return renderSidebar(); }
     const it = e.target.closest('[data-ref]'); if (it) { const ref = findRef(it.dataset.ref); if (ref) selectCommit(ref.sha); return; }
-    const wt = e.target.closest('[data-wt]'); if (wt) openTab(wt.dataset.wt);
+    const wt = e.target.closest('[data-wt]'); if (wt) return openTab(wt.dataset.wt);
+    const sh = e.target.closest('[data-stash]'); if (sh) openStash(+sh.dataset.stash);
   });
   $('#sb-body').addEventListener('dblclick', (e) => {
     const it = e.target.closest('[data-ref]'); if (!it) return;
