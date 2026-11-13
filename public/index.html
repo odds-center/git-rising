@@ -12,6 +12,10 @@
     <div id="tab-list"></div>
     <button id="tab-add" class="ib" title="저장소 열기 (⌘O)"></button>
     <div class="grow drag"></div>
+    <button id="cmdk" title="명령 팔레트"><i data-i="search"></i><span>검색 · 명령</span><kbd>⌘K</kbd></button>
+  </header>
+
+  <div id="toolbar">
     <nav id="actions">
       <div class="grp">
         <button class="tb" data-act="fetch" data-tip="원격의 최신 정보를 받아옵니다 (내 브랜치는 그대로)|git fetch --all --prune"><i data-i="refresh"></i><span>가져오기</span></button>
@@ -28,8 +32,9 @@
         <button class="tb icon-only" data-act="reveal" data-tip="Finder / 탐색기로 열기"><i data-i="folder"></i></button>
       </div>
     </nav>
-    <button id="cmdk" title="명령 팔레트"><i data-i="search"></i><span>검색 · 명령</span><kbd>⌘K</kbd></button>
-  </header>
+    <span class="grow"></span>
+    <span id="tb-status"></span>
+  </div>
 
   <div id="banner" hidden></div>
 

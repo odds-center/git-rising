@@ -61,7 +61,8 @@ body.mac-electron #topbar { padding-left: 82px; }
 #cmdk { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 6px 0 10px; border-radius: 8px; color: var(--muted); background: var(--elev2); box-shadow: inset 0 0 0 1px var(--border); min-width: 170px; }
 #cmdk span { flex: 1; text-align: left; }
 #cmdk:hover { color: var(--text); }
-@media (max-width: 1280px) { .tb span { display: none; } .tb { padding: 0 6px; } #cmdk { min-width: 0; } #cmdk span { display: none; } }
+@media (max-width: 1100px) { #cmdk { min-width: 0; } #cmdk span { display: none; } }
+@media (max-width: 720px) { .tb span { display: none; } .tb { padding: 0 6px; } }
 #banner { display: flex; align-items: center; gap: 10px; padding: 5px 12px; background: var(--warn-bg); color: var(--mod); border-bottom: 1px solid var(--border); font-size: 12px; }
 #banner[hidden] { display: none; }
 #banner b { color: var(--text); }
@@ -528,3 +529,11 @@ body.tab-dragging, body.tab-dragging * { cursor: grabbing !important; }
 .set-h4 { margin: 18px 0 2px; font-size: 12.5px; display: flex; align-items: baseline; gap: 8px; }
 .set-h4 small { color: var(--muted); font: 11px var(--mono); }
 .badge.ok { color: var(--add); background: color-mix(in srgb, var(--add) 15%, transparent); }
+
+/* ---------- toolbar row (under the tabs, so tabs get the whole top bar) ---------- */
+#toolbar { display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 8px; background: var(--panel); border-bottom: 1px solid var(--border); flex: none; }
+#topbar { border-bottom-color: transparent; }
+#tab-list { flex: 0 1 auto; }
+#tb-status { color: var(--muted); font-size: .9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 4px; }
+#tb-status { display: inline-flex; align-items: center; gap: 5px; }
+#tb-status svg { width: 12px; height: 12px; }

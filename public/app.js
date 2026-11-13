@@ -1057,6 +1057,8 @@ function renderTabs() {
   document.title = S.info ? `${S.info.name} — Git Rising` : 'Git Rising';
 }
 function renderActions() {
+  const cur = S.refs.find((r) => r.type === 'branch' && r.name === S.info?.branch);
+  $('#tb-status').innerHTML = S.info ? `${icon('branch')} ${escN(S.info.branch || 'detached')}${cur ? ' ' + trackHTML(cur.track) : ''}${S.status.length ? ` · 변경 ${S.status.length}` : ''}` : '';
   $('[data-act=pop]').disabled = !S.stashes;
   $('[data-act=stash]').disabled = !S.status.length;
 }
