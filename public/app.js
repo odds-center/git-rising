@@ -29,7 +29,7 @@ const PREF_DEF = {
   theme: LS.get('theme', 'dark'), accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
   avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
   autoFetch: LS.get('autoFetch', false) ? 5 : 0, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
-  worktreeGuard: true, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
+  worktreeGuard: true, aiUsage: false, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
 };
 const P = Object.assign({}, PREF_DEF, LS.get('prefs', {}));
 // one-time: profile photos / avatars became the default in 0.2.1
@@ -390,6 +390,7 @@ function connectBus() {
   };
 }
 async function uiCommand(ev) {
+  if (ev.action === 'pref' && ev.key in PREF_DEF) setPref(ev.key, ev.value);
   if (ev.action === 'open' && ev.path) { await openTab(ev.path); window.focus(); }
   if (ev.action === 'select' && ev.path) { if (ev.path !== S.repo) await openTab(ev.path); if (ev.sha) selectCommit(ev.sha); }
 }
@@ -406,7 +407,7 @@ function refLabels(sha) {
   }
   for (const r of refs) if (r.type === 'tag' && P.showTags) out.push(r);
   const hb = S.info?.branch;
-  out.sort((a, b) => (b.name === hb && b.type === 'branch') - (a.name === hb && a.type === 'branch'));
+  out.sort((a, b) => Number(b.name === hb && b.type === 'branch') - Number(a.name === hb && a.type === 'branch'));
   S.labelCache.set(sha, out);
   return out;
 }
@@ -1179,6 +1180,7 @@ async function worktreeGuard(args, label) {
   L.querySelector('[data-c]')?.focus();
 }
 
+/** @param {string} action @param {Record<string, any>} [args] @param {RunOptions} [opts] @returns {Promise<boolean>} */
 async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
   if (action === 'checkout' && S.info?.worktree && P.worktreeGuard && !force && !quiet) { worktreeGuard(args, label); return false; }
   if (action === 'checkout' && args.kind !== 'commit') {
@@ -1218,6 +1220,7 @@ function closeModal(v = null) {
   L.hidden = true; L.innerHTML = ''; S.askId = null;
   const r = modalResolve; modalResolve = null; r?.(v);
 }
+/** @param {ModalOptions} opts @returns {Promise<null | { value?: string, raw?: string, text?: string, checked?: boolean }>} */
 function modal({ title, text, input, inputType = 'text', inputValue = '', textarea, textareaValue = '', checkbox, ok = '확인', danger, wide, html }) {
   closeModal();
   return new Promise((resolve) => {
@@ -1301,6 +1304,7 @@ const ACT = {
 
 // ================================================================ context menus
 function closeMenus() { $('#menu-layer').innerHTML = ''; }
+/** @param {MenuItem[]} items @param {number} x @param {number} y */
 function showMenu(items, x, y) {
   closeMenus();
   const build = (items, px, py, parent) => {
@@ -1351,6 +1355,7 @@ function moveSub(sha) {
 function branchItems(ref) {
   const cur = S.info?.branch, name = ref.name;
   const isCur = ref.type === 'branch' && name === cur;
+  /** @type {MenuItem[]} */
   const items = [];
   if (!isCur && cur && ref.type !== 'tag') {
     items.push({ label: `${cur} 를 ${name} 까지 빨리감기`, hint: 'merge --ff-only', tip: '갈라진 커밋이 있으면 실패 (안전)', run: () => run('ff', { ref: name }, { label: '빨리감기' }) });
@@ -1383,6 +1388,7 @@ function commitMenu(c, ref) {
   const cur = S.info?.branch || 'HEAD', sha = c.sha, short = sha.slice(0, 7);
   const isHead = sha === S.info?.head;
   if (!ref) ref = refLabels(sha).find((r) => r.type !== 'tag') || null;
+  /** @type {MenuItem[]} */
   const items = [{ head: `${short} · ${c.subject.slice(0, 48)}` }];
   if (ref) items.push(...branchItems(ref));
   if (!ref || ref.name === S.info?.branch) items.push({ label: `${cur} 를 이 커밋으로 리셋`, hint: 'reset', sub: resetSub(sha, short) });
@@ -1411,6 +1417,7 @@ function commitMenu(c, ref) {
 function refMenu(ref) {
   const v = vIndex(ref.sha);
   if (v >= 0) return commitMenu(rowAt(v), ref);
+  /** @type {MenuItem[]} */
   const items = [{ head: ref.name }, ...branchItems(ref)];
   const del = deleteItems(ref);
   if (del.length) items.push('-', ...del);
@@ -1495,6 +1502,7 @@ function actionItems() {
     S.repo && A('커밋 검색', 'search', openFind, '⌘F'),
     S.repo && A('내장 터미널 열기/닫기', 'terminal', ACT.terminal, '⌃`'),
     S.repo && A('외부 터미널 앱으로 열기', 'external', ACT.extTerminal),
+    A('터미널 도우미 (oh-my-zsh 자동 업데이트 · 입력 예측)', 'terminal', () => openSettings('term')),
     S.repo && A('HEAD 로 이동', 'commit', () => S.info?.head && selectCommit(S.info.head), 'Shift+H'),
     S.lastUndo && A(`되돌리기: ${S.lastUndo.label}`, 'rotate', () => { const u = S.lastUndo; S.lastUndo = null; u.fn(); }, '⌘Z'),
     S.solo && A('모든 브랜치 보기 (필터 해제)', 'branch', () => setSolo(null)),
@@ -1591,6 +1599,7 @@ function setPref(k, v) {
   if (k === 'density' || k === 'avatars') { applyGeometry(); relayout(); }
   if (k === 'avatarPhotos' || k === 'gravatar') { AV.clear(); S.ver++; renderRows(); renderDetail(); }
   if (k === 'repoLogos') { renderTabs(); renderSidebar(); }
+  if (k === 'aiUsage') startAi();
   if (['showRemotes', 'order'].includes(k) && S.repo) { S.labelCache = new Map(); setSolo(S.solo); }
   if (k === 'showTags') { S.labelCache = new Map(); S.ver++; renderRows(); }
   if (['colAuthor', 'colDate', 'colSha'].includes(k)) { applyCols(); S.ver++; renderRows(); }
@@ -1642,10 +1651,26 @@ async function settingsBody(sec) {
     ${optRow('스태시에 새 파일 포함', 'git stash -u', optToggle('stashUntracked'))}
     ${optRow('푸시 전에 확인', '', optToggle('confirmPush'))}
     <p class="opt-note">머지·리베이스·리셋·삭제는 항상 확인 창이 뜨고, 실행 후 토스트의 <b>되돌리기</b> 또는 <kbd>⌘Z</kbd> 로 취소할 수 있어요.</p>`;
-  if (sec === 'term') return `
+  if (sec === 'term') {
+    const st = await api('shelltools').catch(() => null);
+    let tools = '';
+    if (st?.shell === 'powershell') {
+      tools = `<h4 class="set-h4">셸 도우미</h4>${optRow('예측 입력', '입력하는 동안 이전 명령을 흐리게 미리 보여줍니다 (PSReadLine)', st.prediction ? '<span class="badge ok">켜짐</span>' : '<button class="btn sm primary" data-sh=\'{"action":"psPrediction"}\'>켜기</button>')}`;
+    } else if (st) {
+      const plug = (name, title, desc) => { const p = st.plugins[name]; return optRow(title, desc, p.enabled ? '<span class="badge ok">켜짐</span>' : `<button class="btn sm primary" data-sh='{"action":"plugin","name":"${name}"}'>${p.installed ? '켜기' : '설치하고 켜기'}</button>`); };
+      tools = `<h4 class="set-h4">셸 도우미 <small>${esc(st.shell)}</small></h4>
+        ${st.omz ? optRow('oh-my-zsh 업데이트', '“자동” 으로 두면 터미널을 열 때 묻지 않고 알아서 업데이트합니다', `<div class="seg" id="omz-mode">${[['auto', '자동'], ['prompt', '물어보기'], ['reminder', '알림만'], ['disabled', '끔']].map(([v, l]) => `<button data-omz="${v}" class="${st.omzMode === v ? 'on' : ''}">${l}</button>`).join('')}</div>`) : ''}
+        ${st.omz ? optRow('지금 업데이트', 'oh-my-zsh 와 추가 플러그인·테마를 지금 최신으로', '<button class="btn sm" data-sh=\'{"action":"omzUpdate"}\'>업데이트</button>') : ''}
+        ${plug('zsh-autosuggestions', '입력 예측 (자동완성 제안)', '입력하는 동안 이전에 쓴 명령·경로를 흐리게 미리 보여줍니다 — → 키로 채택')}
+        ${plug('zsh-syntax-highlighting', '명령 색상 표시', '입력 중인 명령이 올바른지 색으로 알려줍니다')}
+        <div class="set-out" id="sh-out"></div>
+        <p class="opt-note">이 설정들은 <code>~/.zshrc</code> 를 고칩니다. 처음 고칠 때 <code>~/.zshrc.git-rising.bak</code> 으로 원본을 남겨요. 외부 터미널에도 똑같이 적용됩니다.</p>`;
+    }
+    return `
     ${optRow('셸', '비워두면 기본 셸 ($SHELL / PowerShell)', `<input class="field" id="set-shell" style="width:220px;margin:0" placeholder="${S.platform === 'win32' ? 'C:\\\\...\\\\pwsh.exe' : '/bin/zsh'}" value="${esc(P.termShell)}">`)}
     ${optRow('글자 크기', '', optSeg('termFont', [[11, '11'], [12, '12'], [13, '13'], [14, '14']]))}
-    ${optRow('외부 터미널', 'Terminal.app / Windows Terminal 로 열기', '<button class="btn sm" id="set-extterm">열기</button>')}`;
+    ${optRow('외부 터미널', 'Terminal.app / Windows Terminal 로 열기', '<button class="btn sm" id="set-extterm">열기</button>')}${tools}`;
+  }
   if (sec === 'remote') {
     const R = S.repo ? await api('remotes', { repo: S.repo }).catch(() => ({ remotes: [] })) : { remotes: [] };
     const rows = R.remotes.map((r) => `<div class="opt"><div class="opt-tx"><div class="opt-t">${icon('cloud')} ${esc(r.name)} <span class="badge">${r.kind.toUpperCase()}</span></div><div class="opt-d" style="font-family:var(--mono);word-break:break-all">${esc(r.url || '')}</div></div>
@@ -1673,7 +1698,8 @@ async function settingsBody(sec) {
   }
   if (sec === 'mcp') {
     const mcp = await api('mcp').catch(() => null);
-    return `<p class="opt-note">Claude 에게 “docca 레포 열어줘”, “develop 을 master 로 reset --hard 해줘”, “최근 커밋 요약해줘” 처럼 말하면 Git Rising 을 통해 실행해요.</p>
+    return `${optRow('AI 사용량을 상태바에 표시', 'Claude Code · Codex(GPT) 요금제 한도를 몇 % 썼는지 보여줍니다. 이 컴퓨터에 저장된 CLI 로그인 토큰을 읽어 각 회사 서버에만 물어봐요.', optToggle('aiUsage'))}
+      <p class="opt-note">Claude 에게 “docca 레포 열어줘”, “develop 을 master 로 reset --hard 해줘”, “최근 커밋 요약해줘” 처럼 말하면 Git Rising 을 통해 실행해요.</p>
       ${mcp ? `${optRow('Claude Code 에 등록', 'claude mcp add 를 대신 실행합니다', '<button class="btn sm primary" id="mcp-add">등록</button>')}
       <div class="set-out">${esc(mcp.command)}</div>
       ${optRow('수동 설정', 'Claude Desktop 등 다른 MCP 클라이언트용', '<button class="btn sm" id="mcp-copy">명령 복사</button><button class="btn sm" id="mcp-json">JSON 복사</button>')}
@@ -1722,6 +1748,13 @@ function wireSettings(sec, show) {
   body.querySelectorAll('[data-toggle]').forEach((b) => (b.onclick = () => { const k = b.dataset.toggle; setPref(k, !P[k]); b.classList.toggle('on', P[k]); }));
   body.querySelectorAll('[data-accent]').forEach((b) => (b.onclick = () => { setPref('accent', b.dataset.accent); body.querySelectorAll('[data-accent]').forEach((x) => x.classList.toggle('on', x === b)); }));
   $('#set-cols')?.addEventListener('click', () => { Object.assign(CW, COL_DEF); LS.set('cols', {}); relayout(); toast('컬럼 너비를 초기화했어요', 'ok'); });
+  const shRun = async (payload, btn) => {
+    const old = btn?.textContent; if (btn) { btn.textContent = '진행 중…'; btn.disabled = true; }
+    try { const r = await post('shelltools', {}, payload); toast((r.output || '완료').trim(), 'ok'); await show('term'); }
+    catch (e) { out('#sh-out', '✗ ' + e.message); if (btn) { btn.textContent = old; btn.disabled = false; } }
+  };
+  body.querySelectorAll('[data-sh]').forEach((b) => (b.onclick = () => shRun(JSON.parse(b.dataset.sh), b)));
+  body.querySelectorAll('[data-omz]').forEach((b) => (b.onclick = () => shRun({ action: 'omzMode', mode: b.dataset.omz })));
   $('#set-shell')?.addEventListener('change', (e) => setPref('termShell', e.target.value.trim()));
   $('#set-extterm')?.addEventListener('click', () => S.repo && run('terminal', {}, { quiet: true, noUndo: true }));
   $('#ssh-test')?.addEventListener('click', async () => { out('#ssh-out', '연결 중…'); try { const r = await post('action', { repo: S.repo || home() }, { action: 'sshTest', args: { host: $('#ssh-host').value.trim() } }); out('#ssh-out', '✓ ' + r.output); } catch (e) { out('#ssh-out', '✗ ' + e.message); } });
@@ -1967,6 +2000,7 @@ function bind() {
   });
   $('#palette-layer').addEventListener('mousedown', (e) => { if (e.target.id === 'palette-layer') closePalette(); });
   $('#sb-theme').onclick = toggleTheme;
+  $('#sb-ai').onclick = aiPopover;
   $('#sb-settings').onclick = () => openSettings();
   $('#sb-update').onclick = async () => {
     if (S.update?.state !== 'available') return;
@@ -2050,6 +2084,52 @@ function bind() {
 
 
 
+
+// ================================================================ AI usage in the status bar (opt-in)
+const AI = { data: null, timer: null };
+async function refreshAi(force) {
+  if (!P.aiUsage) { $('#sb-ai').hidden = true; return; }
+  try { AI.data = await api('aiusage', force ? { force: 1 } : {}); } catch { return; }
+  renderAi();
+}
+const aiLevel = (p) => (p >= 90 ? 'hot' : p >= 70 ? 'warm' : '');
+function resetText(iso) {
+  if (!iso) return '';
+  const ms = new Date(iso).getTime() - Date.now();
+  if (!(ms > 0)) return '곧 초기화';
+  const h = ms / 3600000;
+  return h < 1 ? `${Math.ceil(ms / 60000)}분 뒤 초기화` : h < 48 ? `${Math.round(h)}시간 뒤 초기화` : `${Math.round(h / 24)}일 뒤 초기화`;
+}
+function renderAi() {
+  const el = $('#sb-ai');
+  const ps = AI.data?.providers || [];
+  el.hidden = !P.aiUsage || !ps.length;
+  if (el.hidden) return;
+  el.innerHTML = ps.map((p) => {
+    if (p.state !== 'ok') return `<span class="ai-p" title="${esc(p.name)}: ${p.state === 'expired' ? '로그인이 만료됐어요 — CLI 를 한 번 실행하면 갱신됩니다' : esc(p.error || '확인 실패')}">${icon('bot')}${esc(p.name)} <span class="ai-off">${p.state === 'expired' ? '만료' : '?'}</span></span>`;
+    if (!p.windows.length) return `<span class="ai-p">${icon('bot')}${esc(p.name)} <span class="ai-off">0%</span></span>`;
+    return `<span class="ai-p">${icon('bot')}${esc(p.name)}${p.windows.slice(0, 2).map((w) => `<span class="ai-w ${aiLevel(w.pct)}" title="${esc(p.name)} ${esc(w.label)} 한도의 ${w.pct}% 사용 · ${esc(resetText(w.resetsAt))}"><i>${esc(w.label)}</i><span class="ai-bar"><b style="width:${w.pct}%"></b></span>${w.pct}%</span>`).join('')}</span>`;
+  }).join('');
+}
+function aiPopover() {
+  const ps = AI.data?.providers || [];
+  const r = $('#sb-ai').getBoundingClientRect();
+  showMenu([
+    { head: `AI 사용량 · ${AI.data ? relDate(AI.data.at / 1000) : ''} 확인` },
+    ...ps.flatMap((p) => p.state !== 'ok'
+      ? [{ label: `${p.name} — ${p.state === 'expired' ? '로그인 만료 (CLI 를 한 번 실행하세요)' : '확인 실패'}`, icon: 'bot', disabled: true, run() {} }]
+      : [{ head: `${p.name}${p.plan ? ' · ' + p.plan : ''}` }, ...(p.windows.length ? p.windows : [{ label: '사용량', pct: 0 }]).map((w) => ({ label: `${w.label}  ${w.pct}%`, hint: resetText(w.resetsAt), icon: 'zap', run() {} }))]),
+    '-',
+    { label: '지금 새로고침', icon: 'refresh', run: () => refreshAi(true) },
+    { label: '상태바에서 숨기기', icon: 'eye', run: () => setPref('aiUsage', false) },
+  ], r.left, r.top - 8 - 30 * (ps.length * 3 + 3));
+}
+function startAi() {
+  clearInterval(AI.timer);
+  if (!P.aiUsage) { $('#sb-ai').hidden = true; return; }
+  refreshAi();
+  AI.timer = setInterval(() => { if (!document.hidden) refreshAi(); }, 5 * 60 * 1000);
+}
 
 // ================================================================ undo / filters / help
 function snapshotState() {
@@ -2258,7 +2338,7 @@ function bindColumnResize() {
   window.gittreeOpen = (p) => openTab(p);
   const [ver, def] = await Promise.all([api('version').catch(() => ({})), api('default').catch(() => ({}))]);
   S.version = ver.version; S.platform = ver.platform; S.homeDir = def.home || '';
-  renderDetail(); renderStatusbar();
+  renderDetail(); renderStatusbar(); startAi();
   const urlRepo = new URLSearchParams(location.search).get('repo');
   history.replaceState(null, '', '/');
   if (!P.restoreTabs) S.tabs = [];

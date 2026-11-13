@@ -173,7 +173,7 @@ if (!app.requestSingleInstanceLock()) {
 
     const isMac = process.platform === 'darwin';
     Menu.setApplicationMenu(
-      Menu.buildFromTemplate([
+      Menu.buildFromTemplate(/** @type {Electron.MenuItemConstructorOptions[]} */ ([
         ...(isMac ? [{ role: 'appMenu' }] : []),
         { role: 'editMenu' },
         {
@@ -181,7 +181,7 @@ if (!app.requestSingleInstanceLock()) {
           submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }],
         },
         { role: 'windowMenu' },
-      ])
+      ]))
     );
 
     createWindow(repoFromArgv(process.argv));

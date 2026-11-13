@@ -18,6 +18,22 @@ const RECENT_FILE = path.join(CONFIG_DIR, 'recent.json');
 const MAX_DIFF_BYTES = 3 * 1024 * 1024;
 
 // Host integration (folder picker, terminal, file manager) is injected by the Electron main process.
+/**
+ * @typedef {Object} Host
+ * @property {string | null} startRepo
+ * @property {string} version
+ * @property {boolean} cacheStatic
+ * @property {number} [port]
+ * @property {() => Promise<string | null>} pickFolder
+ * @property {(dir: string) => Promise<void>} openTerminal
+ * @property {(dir: string) => Promise<void>} reveal
+ * @property {(file: string) => Promise<void>} openPath
+ * @property {(file: string) => Promise<void> | void} [showItem]
+ * @property {{ script: string, js: string, port: number, token: string } | null} askpass
+ * @property {{ status(): any, check(manual?: boolean): Promise<void>, install(): Promise<void> | void } | null} update
+ * @property {{ command: string, json: any, install(): Promise<string> } | null} mcp
+ */
+/** @type {Host} */
 const host = {
   startRepo: process.cwd(),
   pickFolder: async () => null,
@@ -139,6 +155,7 @@ export function decodeSmart(buf) {
 }
 // English git messages (we parse a few) but UTF-8 character handling.
 function gitEnv(extra = {}) {
+  /** @type {Record<string, string | undefined>} */
   const env = { ...process.env, ...askpassEnv(), ...extra, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LANGUAGE: 'en', LC_MESSAGES: 'C' };
   delete env.LC_ALL;
   if (process.platform !== 'win32') { env.LANG = 'en_US.UTF-8'; env.LC_CTYPE = 'en_US.UTF-8'; }
@@ -162,6 +179,11 @@ function git(repo, args, { okCodes = [0], maxBuffer = 256 * 1024 * 1024 } = {}) 
 }
 
 // Commands that aren't git (ssh, ssh-add). Resolves with combined output; never throws on exit code.
+/**
+ * @param {string} cmd @param {string[]} args
+ * @param {{ cwd?: string, timeout?: number }} [opts]
+ * @returns {Promise<{ code: number, out: string }>}
+ */
 function runCmd(cmd, args, { cwd, timeout = 30000 } = {}) {
   return new Promise((resolve) => {
     execFile(cmd, args, { cwd, timeout, encoding: 'utf8', env: { ...process.env, ...askpassEnv() } }, (err, stdout, stderr) => {
@@ -194,7 +216,9 @@ async function hasHead(repo) {
   }
 }
 
+/** @param {number} status @param {string} message */
 function httpError(status, message) {
+  /** @type {Error & { status?: number }} */
   const e = new Error(message);
   e.status = status;
   return e;
@@ -556,6 +580,7 @@ async function apiClone(_q, body) {
   return { path: target };
 }
 
+/** Every write the UI / MCP can ask for. @type {Record<string, (repo: string, args?: any) => Promise<any>>} */
 const actions = {
   async checkout(repo, { ref, kind, mode }) {
     if (kind === 'remote') {
@@ -954,6 +979,165 @@ async function handleImage(res, job) {
   res.end(img.buf);
 }
 
+// ---------- AI usage (opt-in): how much of the Claude Code / Codex plan limits is used ----------
+// Reads the CLI's own login token from this machine and asks the vendor's usage endpoint.
+// Tokens never leave this process except to that vendor; nothing is refreshed or written.
+const pct = (v) => (typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : null);
+async function claudeCreds() {
+  if (process.platform === 'darwin') {
+    const raw = await new Promise((resolve) => execFile('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], { timeout: 15000, encoding: 'utf8' }, (e, out) => resolve(e ? '' : out.trim())));
+    if (raw) { try { return JSON.parse(raw).claudeAiOauth || null; } catch {} }
+  }
+  try { return JSON.parse(await fs.promises.readFile(path.join(os.homedir(), '.claude', '.credentials.json'), 'utf8')).claudeAiOauth || null; } catch { return null; }
+}
+async function claudeUsage() {
+  const c = await claudeCreds();
+  if (!c?.accessToken) return null; // Claude Code not installed / not logged in
+  if (c.expiresAt && c.expiresAt < Date.now()) return { name: 'Claude', state: 'expired', plan: c.subscriptionType || null };
+  try {
+    const r = await fetch('https://api.anthropic.com/api/oauth/usage', { headers: { authorization: `Bearer ${c.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20', 'user-agent': 'git-rising' }, signal: AbortSignal.timeout(10000) });
+    if (r.status === 401) return { name: 'Claude', state: 'expired', plan: c.subscriptionType || null };
+    if (!r.ok) return { name: 'Claude', state: 'error', error: `HTTP ${r.status}` };
+    const d = await r.json();
+    const win = (w, label) => (w && pct(w.utilization) != null ? { label, pct: pct(w.utilization), resetsAt: w.resets_at || null } : null);
+    return { name: 'Claude', state: 'ok', plan: c.subscriptionType || null, windows: [win(d.five_hour, '5시간'), win(d.seven_day, '주간'), win(d.seven_day_opus, '주간 Opus'), win(d.seven_day_sonnet, '주간 Sonnet')].filter(Boolean) };
+  } catch (e) { return { name: 'Claude', state: 'error', error: e.message }; }
+}
+async function codexUsage() {
+  let auth;
+  try { auth = JSON.parse(await fs.promises.readFile(path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'auth.json'), 'utf8')); } catch { return null; }
+  const t = auth?.tokens;
+  if (!t?.access_token) return null; // API-key login has no plan limits to show
+  try {
+    const r = await fetch('https://chatgpt.com/backend-api/wham/usage', { headers: { authorization: `Bearer ${t.access_token}`, ...(t.account_id ? { 'chatgpt-account-id': t.account_id } : {}), 'user-agent': 'git-rising' }, signal: AbortSignal.timeout(10000) });
+    if (r.status === 401) return { name: 'Codex', state: 'expired' };
+    if (!r.ok) return { name: 'Codex', state: 'error', error: `HTTP ${r.status}` };
+    const d = await r.json();
+    const rl = d.rate_limit || d.rate_limits || {};
+    const win = (w, fallback) => {
+      if (!w || pct(w.used_percent) == null) return null;
+      const secs = w.limit_window_seconds || (w.window_minutes ? w.window_minutes * 60 : 0);
+      const label = secs ? (secs <= 6 * 3600 ? `${Math.round(secs / 3600)}시간` : secs >= 6 * 86400 ? '주간' : `${Math.round(secs / 86400)}일`) : fallback;
+      const reset = w.reset_at ? new Date(w.reset_at * 1000).toISOString() : w.resets_at || null;
+      return { label, pct: pct(w.used_percent), resetsAt: reset };
+    };
+    return { name: 'Codex', state: 'ok', plan: d.plan_type || null, windows: [win(rl.primary_window || rl.primary, '5시간'), win(rl.secondary_window || rl.secondary, '주간')].filter(Boolean) };
+  } catch (e) { return { name: 'Codex', state: 'error', error: e.message }; }
+}
+let aiCache = null;
+async function apiAiUsage(q) {
+  if (aiCache && !q.force && Date.now() - aiCache.at < 4 * 60 * 1000) return aiCache;
+  const providers = (await Promise.all([claudeUsage(), codexUsage()])).filter(Boolean);
+  return (aiCache = { at: Date.now(), providers });
+}
+
+// ---------- shell helpers: oh-my-zsh updates, autosuggestions, syntax highlighting ----------
+// Edits ~/.zshrc only when the user presses a button; the first edit leaves ~/.zshrc.git-rising.bak.
+const ZSHRC = path.join(os.homedir(), '.zshrc');
+const OMZ = process.env.ZSH || path.join(os.homedir(), '.oh-my-zsh');
+const OMZ_CUSTOM = process.env.ZSH_CUSTOM || path.join(OMZ, 'custom');
+const ZSH_PLUGINS = {
+  'zsh-autosuggestions': { url: 'https://github.com/zsh-users/zsh-autosuggestions', file: 'zsh-autosuggestions.zsh' },
+  'zsh-syntax-highlighting': { url: 'https://github.com/zsh-users/zsh-syntax-highlighting', file: 'zsh-syntax-highlighting.zsh' },
+};
+const readZshrc = () => { try { return fs.readFileSync(ZSHRC, 'utf8'); } catch { return ''; } };
+function writeZshrc(text) {
+  const bak = ZSHRC + '.git-rising.bak';
+  if (fs.existsSync(ZSHRC) && !fs.existsSync(bak)) fs.copyFileSync(ZSHRC, bak);
+  fs.writeFileSync(ZSHRC, text);
+}
+const uncommented = (rc) => rc.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+function zshPluginList(rc) {
+  const m = uncommented(rc).match(/^\s*plugins=\(([\s\S]*?)\)/m);
+  return m ? m[1].replace(/#.*$/gm, '').split(/\s+/).filter(Boolean) : null;
+}
+function pluginLocation(name) {
+  const spots = [path.join(OMZ_CUSTOM, 'plugins', name), path.join(os.homedir(), '.zsh', name), `/opt/homebrew/share/${name}`, `/usr/local/share/${name}`, `/usr/share/${name}`, `/usr/share/zsh/plugins/${name}`];
+  return spots.find((d) => fs.existsSync(path.join(d, ZSH_PLUGINS[name].file))) || null;
+}
+async function apiShellTools() {
+  if (process.platform === 'win32') {
+    const prof = path.join(os.homedir(), 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
+    let txt = '';
+    try { txt = fs.readFileSync(prof, 'utf8'); } catch {}
+    return { shell: 'powershell', profile: prof, prediction: /PredictionSource/i.test(txt) };
+  }
+  const rc = readZshrc();
+  const live = uncommented(rc);
+  const omz = fs.existsSync(path.join(OMZ, 'oh-my-zsh.sh'));
+  let mode = (live.match(/zstyle\s+['"]:omz:update['"]\s+mode\s+(\w+)/) || [])[1] || null;
+  if (!mode && /DISABLE_AUTO_UPDATE\s*=\s*["']?true/.test(live)) mode = 'disabled';
+  if (!mode && /DISABLE_UPDATE_PROMPT\s*=\s*["']?true/.test(live)) mode = 'auto';
+  const list = zshPluginList(rc) || [];
+  const plugins = Object.fromEntries(Object.keys(ZSH_PLUGINS).map((n) => {
+    const dir = pluginLocation(n);
+    return [n, { installed: !!dir, enabled: list.includes(n) || new RegExp(`^\\s*source\\s+.*${n}`, 'm').test(live) }];
+  }));
+  return { shell: path.basename(process.env.SHELL || 'zsh'), zshrc: fs.existsSync(ZSHRC), omz, omzMode: omz ? mode || 'prompt' : null, plugins };
+}
+async function shellToolsAction(body) {
+  const act = body?.action;
+  if (process.platform === 'win32') {
+    if (act !== 'psPrediction') throw httpError(400, '이 기능은 zsh 용이에요');
+    const prof = path.join(os.homedir(), 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
+    fs.mkdirSync(path.dirname(prof), { recursive: true });
+    fs.appendFileSync(prof, '\n# Git Rising: 예측 입력\nSet-PSReadLineOption -PredictionSource History\nSet-PSReadLineOption -PredictionViewStyle InlineView\n');
+    return { output: 'PowerShell 프로필에 예측 입력을 켰어요. 새 터미널부터 적용됩니다.' };
+  }
+  if (act === 'omzMode') {
+    if (!['auto', 'prompt', 'reminder', 'disabled'].includes(body.mode)) throw httpError(400, 'bad mode');
+    let rc = readZshrc();
+    const line = `zstyle ':omz:update' mode ${body.mode}`;
+    if (/^\s*#?\s*zstyle\s+['"]:omz:update['"]\s+mode\s+\w+.*$/m.test(rc)) {
+      let done = false; // rewrite the first one, drop any others so only one setting is live
+      rc = rc.replace(/^\s*#?\s*zstyle\s+['"]:omz:update['"]\s+mode\s+\w+.*$\n?/gm, () => (done ? '' : ((done = true), line + '\n')));
+    } else if (/^\s*source\s+.*oh-my-zsh\.sh/m.test(rc)) rc = rc.replace(/^(\s*source\s+.*oh-my-zsh\.sh.*)$/m, `${line}  # Git Rising: oh-my-zsh 업데이트 방식\n$1`);
+    else throw httpError(409, '.zshrc 에서 oh-my-zsh 를 불러오는 줄을 찾지 못했어요');
+    writeZshrc(rc);
+    return { output: `oh-my-zsh 업데이트 방식: ${body.mode} — 새 터미널부터 적용됩니다.` };
+  }
+  if (act === 'omzUpdate') {
+    if (!fs.existsSync(path.join(OMZ, 'tools', 'upgrade.sh'))) throw httpError(409, 'oh-my-zsh 가 설치돼 있지 않아요');
+    const out = [];
+    const r = await new Promise((resolve) => execFile('zsh', ['-f', path.join(OMZ, 'tools', 'upgrade.sh')], { timeout: 120000, encoding: 'utf8', env: { ...process.env, ZSH: OMZ } }, (e, so, se) => resolve({ ok: !e, text: `${so || ''}${se || ''}` })));
+    out.push(r.ok ? 'oh-my-zsh: 업데이트 완료' : 'oh-my-zsh: ' + r.text.replace(/\x1b\[[0-9;]*m/g, '').trim().split('\n').slice(-2).join(' '));
+    // custom plugins / themes that are git checkouts
+    for (const kind of ['plugins', 'themes']) {
+      let names = [];
+      try { names = fs.readdirSync(path.join(OMZ_CUSTOM, kind)); } catch {}
+      for (const n of names) {
+        const dir = path.join(OMZ_CUSTOM, kind, n);
+        if (!fs.existsSync(path.join(dir, '.git'))) continue;
+        const res = await git(dir, ['pull', '--ff-only', '--quiet']).then(() => '최신', (e) => '실패 — ' + e.message.split('\n')[0]);
+        out.push(`${n}: ${res}`);
+      }
+    }
+    return { output: out.join('\n') };
+  }
+  if (act === 'plugin') {
+    const name = body.name;
+    const def = ZSH_PLUGINS[name];
+    if (!def) throw httpError(400, 'unknown plugin');
+    let dir = pluginLocation(name);
+    const omz = fs.existsSync(path.join(OMZ, 'oh-my-zsh.sh'));
+    if (!dir) {
+      dir = omz ? path.join(OMZ_CUSTOM, 'plugins', name) : path.join(os.homedir(), '.zsh', name);
+      fs.mkdirSync(path.dirname(dir), { recursive: true });
+      await git(path.dirname(dir), ['clone', '--depth', '1', '--', def.url, dir]);
+    }
+    let rc = readZshrc();
+    const list = zshPluginList(rc);
+    if (omz && list && dir.startsWith(OMZ_CUSTOM)) {
+      if (!list.includes(name)) rc = rc.replace(/^(\s*plugins=\()([\s\S]*?)(\))/m, (_m, a, mid, c) => `${a}${mid.replace(/\s*$/, '')}${/\n/.test(mid) ? '\n  ' : ' '}${name}${/\n/.test(mid) ? '\n' : ''}${c}`);
+    } else if (!new RegExp(`^\\s*source\\s+.*${name}`, 'm').test(uncommented(rc))) {
+      rc = rc.replace(/\n*$/, '') + `\n\n# Git Rising: ${name}\nsource ${path.join(dir, def.file)}\n`;
+    }
+    if (rc !== readZshrc()) writeZshrc(rc);
+    return { output: `${name} 을 켰어요. 새 터미널부터 적용됩니다.` };
+  }
+  throw httpError(400, 'unknown action');
+}
+
 // vendored browser libraries for previews / terminal (served from node_modules)
 const VENDOR = {
   'docx-preview.js': 'docx-preview/dist/docx-preview.min.js',
@@ -1143,7 +1327,9 @@ async function createWatcher(repo) {
   const watch = (dir, cb) => {
     try { w.handles.push(fs.watch(dir, { recursive: true }, cb)); return true; } catch { return false; }
   };
-  const ok = watch(gitDir, onGit) & (commonDir === gitDir || watch(commonDir, onGit)) & watch(repo, onTree);
+  // start all three (no short-circuit): a failure of one must not skip the others
+  const started = [watch(gitDir, onGit), commonDir === gitDir || watch(commonDir, onGit), watch(repo, onTree)];
+  const ok = started.every(Boolean);
   // Fallback when recursive watching isn't available: slow poll.
   if (!ok) w.poll = setInterval(() => { fire('refs'); fire('status'); }, 4000);
   w.close = () => { clearTimeout(w.timer); clearInterval(w.poll); for (const h of w.handles) try { h.close(); } catch {} };
@@ -1311,6 +1497,8 @@ const routes = {
   '/api/search': apiSearch,
   '/api/filelog': apiFileLog,
   '/api/remotes': apiRemotes,
+  '/api/aiusage': apiAiUsage,
+  '/api/shelltools': async (_q, body) => (body ? shellToolsAction(body) : apiShellTools()),
   // UI state (tabs, preferences, column widths). Kept in a file because the app's origin
   // (127.0.0.1:<random port>) changes every launch, which would orphan localStorage.
   '/api/state': async (_q, body) => {
@@ -1382,7 +1570,7 @@ export function startServer(hooks = {}) {
     const handler = routes[url.pathname];
     if (handler) {
       const WRITE = ['/api/pick', '/api/action', '/api/config', '/api/askpass/answer', '/api/openfile', '/api/ui', '/api/clone'];
-      const MIXED = ['/api/update', '/api/mcp', '/api/state']; // GET = read status, POST = do something
+      const MIXED = ['/api/update', '/api/mcp', '/api/state', '/api/shelltools']; // GET = read status, POST = do something
       const isWrite = WRITE.includes(url.pathname) || (MIXED.includes(url.pathname) && req.method !== 'GET');
       if (isWrite && (req.method !== 'POST' || req.headers['x-gittree'] !== '1')) {
         // custom header => browsers can't send it cross-origin without a preflight we never approve
@@ -1425,7 +1613,7 @@ export function startServer(hooks = {}) {
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(Number(hooks.port) || 0, '127.0.0.1', () => {
-      const { port } = server.address();
+      const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
       allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
       origin = `http://127.0.0.1:${port}`;
       resolve({ port, server, host });

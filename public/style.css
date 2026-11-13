@@ -510,3 +510,21 @@ body.tab-dragging, body.tab-dragging * { cursor: grabbing !important; }
 
 .choice.danger > svg { color: var(--del); }
 .choice.danger:hover, .choice.danger:focus-visible { box-shadow: inset 0 0 0 1.5px var(--del); background: color-mix(in srgb, var(--del) 10%, transparent); }
+
+/* ---------- AI usage ---------- */
+#sb-ai { display: flex; align-items: center; gap: 12px; height: 20px; padding: 0 7px; border-radius: 6px; color: var(--muted); font-size: 11px; }
+#sb-ai[hidden] { display: none; }
+#sb-ai:hover { background: var(--hover); color: var(--text); }
+.ai-p { display: inline-flex; align-items: center; gap: 6px; }
+.ai-p > svg { width: 12px; height: 12px; }
+.ai-w { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 10.5px; }
+.ai-w i { font: normal 10.5px var(--sans); color: var(--dim); }
+.ai-bar { width: 34px; height: 4px; border-radius: 2px; background: var(--active); overflow: hidden; }
+.ai-bar b { display: block; height: 100%; border-radius: 2px; background: var(--add); }
+.ai-w.warm .ai-bar b { background: var(--mod); } .ai-w.warm { color: var(--mod); }
+.ai-w.hot .ai-bar b { background: var(--del); } .ai-w.hot { color: var(--del); }
+.ai-off { color: var(--dim); }
+
+.set-h4 { margin: 18px 0 2px; font-size: 12.5px; display: flex; align-items: baseline; gap: 8px; }
+.set-h4 small { color: var(--muted); font: 11px var(--mono); }
+.badge.ok { color: var(--add); background: color-mix(in srgb, var(--add) 15%, transparent); }

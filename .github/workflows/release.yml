@@ -20,6 +20,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Type check
+        run: npm run check
       - name: Build macOS
         if: runner.os == 'macOS'
         run: npx electron-builder --mac --publish never

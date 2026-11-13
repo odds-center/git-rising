@@ -81,6 +81,12 @@
 
 기본 셸이 그래프 아래에 뜹니다 (`` ⌃` ``). 탭 여러 개, 저장소별로 유지.
 
+### 터미널 도우미 · AI 사용량
+
+- **oh-my-zsh 업데이트를 자동으로** — 터미널을 열 때마다 묻지 않게 (설정 → 터미널)
+- **입력 예측**(zsh-autosuggestions) · **명령 색상**(zsh-syntax-highlighting) 을 버튼 하나로 설치·켜기. `.zshrc` 를 고치기 전에 백업을 남깁니다
+- 상태바에 **Claude Code · Codex 요금제 사용량(%)** 표시 (선택 사항 — 설정 → Claude 연결에서 켜기)
+
 ### 인증이 알아서
 
 - **HTTPS · SSH 모두** 지원. 암호가 필요하면 앱 안에 입력 창이 뜨고, 맥은 키체인에 저장해 다음부터 자동
@@ -125,6 +131,7 @@ claude mcp add --scope user git-rising -e ELECTRON_RUN_AS_NODE=1 -- \
 | `repo_overview` | 브랜치, ahead/behind, 변경사항, 최근 커밋 |
 | `list_branches` · `repo_log` · `show_commit` · `search_commits` | 조회 |
 | `git_action` | fetch · pull · push · checkout · reset · merge · rebase · … |
+| `terminal_tools` | oh-my-zsh 업데이트 방식, 입력 예측·문법 강조 플러그인 |
 | `set_scan_roots` | 저장소 검색 위치 변경 |
 
 ## 단축키
@@ -146,6 +153,7 @@ claude mcp add --scope user git-rising -e ELECTRON_RUN_AS_NODE=1 -- \
 npm install
 npm start                  # 개발 모드 (npm start -- /path/to/repo)
 npm run install:mac        # 빌드해서 /Applications 에 설치
+npm run check              # 타입 검사 (JS 를 tsc 로 검사, 빌드 단계 없음)
 ```
 
 **릴리즈** — 태그를 올리면 GitHub Actions 가 mac/win 빌드를 Release 에 올리고, 설치된 앱들이 업데이트합니다.

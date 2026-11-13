@@ -78,7 +78,7 @@ export function createUpdater(notify) {
       const { dir, file } = await download();
       if (process.platform === 'darwin') {
         const out = path.join(dir, 'x');
-        await new Promise((res, rej) => execFile('ditto', ['-x', '-k', file, out], (e) => (e ? rej(e) : res())));
+        await /** @type {Promise<void>} */ (new Promise((res, rej) => execFile('ditto', ['-x', '-k', file, out], (e) => (e ? rej(e) : res()))));
         const newApp = fs.readdirSync(out).find((f) => f.endsWith('.app'));
         if (!newApp) throw new Error('zip 안에 .app 이 없습니다');
         const appPath = path.resolve(process.execPath, '..', '..', '..'); // …/Git Rising.app

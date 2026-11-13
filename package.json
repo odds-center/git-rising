@@ -1,7 +1,7 @@
 {
   "name": "git-rising",
   "productName": "Git Rising",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "가볍고 컴팩트한 git 그래프 뷰어 (macOS / Windows)",
   "type": "module",
   "main": "src/main.js",
@@ -13,7 +13,8 @@
     "dist": "electron-builder --mac --win",
     "install:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir --arm64 && rm -rf '/Applications/Git Rising.app' && cp -R 'dist/mac-arm64/Git Rising.app' /Applications/ && xattr -dr com.apple.quarantine '/Applications/Git Rising.app'",
     "mcp": "node src/mcp.js",
-    "postinstall": "node -e \"for(const a of ['arm64','x64']){try{require('fs').chmodSync('node_modules/node-pty/prebuilds/darwin-'+a+'/spawn-helper',0o755)}catch{}}\""
+    "postinstall": "node -e \"for(const a of ['arm64','x64']){try{require('fs').chmodSync('node_modules/node-pty/prebuilds/darwin-'+a+'/spawn-helper',0o755)}catch{}}\"",
+    "check": "tsc -p ."
   },
   "build": {
     "appId": "com.oddscenter.gitrising",
@@ -64,8 +65,11 @@
     "npmRebuild": false
   },
   "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
     "electron": "^45.3.1",
-    "electron-builder": "^26.18.0"
+    "electron-builder": "^26.18.0",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@highlightjs/cdn-assets": "^11.12.0",

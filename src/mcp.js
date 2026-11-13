@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
 const RUNTIME = path.join(os.homedir(), '.config', 'git-rising', 'runtime.json');
-const VERSION = '0.2.4';
+const VERSION = '0.2.5';
 let base = null, headless = false;
 
 function appRuntime() {
@@ -152,6 +152,17 @@ const TOOLS = [
       const r = await call('action', { repo }, { action, args });
       return { ok: true, output: (r.output || '').trim() };
     },
+  },
+  {
+    name: 'terminal_tools',
+    description:
+      '터미널(셸) 도우미. action 없이 부르면 현재 상태(oh-my-zsh 업데이트 방식, 입력 예측·문법 강조 플러그인)를 돌려줍니다.\n' +
+      '- omzMode {mode: auto|prompt|reminder|disabled}: oh-my-zsh 업데이트를 자동/물어보기/알림/끔 으로\n' +
+      '- omzUpdate: oh-my-zsh 와 추가 플러그인·테마를 지금 업데이트\n' +
+      '- plugin {name: zsh-autosuggestions|zsh-syntax-highlighting}: 설치하고 .zshrc 에서 켜기\n' +
+      '~/.zshrc 를 고치며 처음 고칠 때 ~/.zshrc.git-rising.bak 백업을 남깁니다.',
+    inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['omzMode', 'omzUpdate', 'plugin', 'psPrediction'] }, mode: { type: 'string' }, name: { type: 'string' } } },
+    run: async ({ action, mode, name }) => (action ? call('shelltools', {}, { action, mode, name }) : call('shelltools')),
   },
   {
     name: 'set_scan_roots',
