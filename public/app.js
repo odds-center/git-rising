@@ -26,7 +26,7 @@ let ROW = 24, LANE = 14, PAD = 10, NODE_R = 4;
 
 // ---------------------------------------------------------------- preferences (설정)
 const PREF_DEF = {
-  theme: LS.get('theme', 'dark'), accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
+  theme: LS.get('theme', 'dark'), darkTone: 'soft', accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
   avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
   autoFetch: LS.get('autoFetch', false) ? 5 : 0, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
   worktreeGuard: false, aiUsage: false, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
@@ -41,7 +41,13 @@ const DENSITY = { compact: 21, normal: 24, comfy: 28 };
 const COL_DEF = { ref: 160, graph: 0, author: 110, date: 84, sha: 72 }; // graph 0 = auto
 const COL_MIN = { ref: 60, graph: 28, author: 48, date: 48, sha: 40 };
 const CW = Object.assign({}, COL_DEF, LS.get('cols', {}));
-const COLORS = ['#6b8cff', '#b07aff', '#ef62b0', '#ff7b5c', '#f2b740', '#3ec486', '#2db7cc', '#9183ff', '#e8577a', '#62aef7'];
+// Graph palettes. On dark backgrounds saturated colours glare, so the dark themes use softer tones.
+const LANES = {
+  light: ['#4f74e8', '#9a5fe6', '#d94d9c', '#e8663f', '#c9921a', '#22a06b', '#1b9bb3', '#7a6cf0', '#d1486b', '#3f8fd9'],
+  soft: ['#8aa4ec', '#b79cf0', '#e09ac6', '#e8a48e', '#dcc07a', '#7fcaa2', '#74c0d0', '#a9a0ee', '#e0919f', '#88b8e8'],
+  deep: ['#6b8cff', '#b07aff', '#ef62b0', '#ff7b5c', '#f2b740', '#3ec486', '#2db7cc', '#9183ff', '#e8577a', '#62aef7'],
+};
+let COLORS = LANES.soft;
 const laneColor = (i) => COLORS[i % COLORS.length];
 const home = () => S.homeDir || '';
 const tilde = (p) => (home() && p.startsWith(home()) ? '~' + p.slice(home().length) : p);
@@ -1806,7 +1812,7 @@ async function editRoots() {
 
 function setPref(k, v) {
   P[k] = v; LS.set('prefs', P);
-  if (['theme', 'accent', 'fontSize'].includes(k)) applyTheme();
+  if (['theme', 'accent', 'fontSize', 'darkTone'].includes(k)) applyTheme();
   if (k === 'density' || k === 'avatars') { applyGeometry(); relayout(); }
   if (k === 'avatarPhotos' || k === 'gravatar') { AV.clear(); S.ver++; renderRows(); renderDetail(); }
   if (k === 'repoLogos') { renderTabs(); renderSidebar(); }
@@ -1838,6 +1844,7 @@ const optRow = (title, desc, control) => `<div class="opt"><div class="opt-tx"><
 async function settingsBody(sec) {
   if (sec === 'look') return `
     ${optRow('테마', '시스템 설정을 따르거나 직접 고르세요', optSeg('theme', [['system', '시스템'], ['light', '라이트'], ['dark', '다크']]))}
+    ${optRow('다크 톤', '부드럽게: 눈이 편한 회색 배경과 파스텔 그래프 · 진하게: 검정에 가까운 배경과 선명한 색', optSeg('darkTone', [['soft', '부드럽게'], ['deep', '진하게']]))}
     ${optRow('강조 색', '선택 · 버튼 · 링크 색', `<div class="swatches">${Object.entries(ACCENTS).map(([k, [d]]) => `<button class="sw${P.accent === k ? ' on' : ''}" data-accent="${k}" style="--c:${d}" title="${k}"></button>`).join('')}</div>`)}
     ${optRow('글자 크기', '', optSeg('fontSize', [[12, '작게'], [13, '보통'], [14, '크게'], [15, '아주 크게']]))}
     ${optRow('줄 간격', '커밋 목록 한 줄 높이', optSeg('density', [['compact', '촘촘'], ['normal', '보통'], ['comfy', '넉넉']]))}
@@ -2070,6 +2077,9 @@ function applyTheme() {
   const dark = pref === 'system' ? matchMedia('(prefers-color-scheme: dark)').matches : pref === 'dark';
   S.themeName = dark ? 'dark' : 'light';
   document.documentElement.dataset.theme = S.themeName;
+  document.documentElement.dataset.tone = dark ? (P.darkTone === 'deep' ? 'deep' : 'soft') : '';
+  const pal = dark ? (P.darkTone === 'deep' ? LANES.deep : LANES.soft) : LANES.light;
+  if (pal !== COLORS) { COLORS = pal; S.ver++; S.labelCache = new Map(); if (S.detail) renderDetail(); }
   const cs = getComputedStyle(document.documentElement);
   const ac = ACCENTS[P.accent] || ACCENTS.indigo;
   document.documentElement.style.setProperty('--accent', dark ? ac[0] : ac[1]);

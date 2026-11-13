@@ -650,3 +650,21 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
 .rp-it .pill { max-width: none; height: auto; min-height: 20px; padding: 2px 9px; flex: 0 1 auto; }
 .rp-it .pill .t { white-space: normal; overflow: visible; word-break: break-all; }
 .rp-kind { padding-left: 14px; }
+
+/* ---------- dark, soft tone (default): lifted background, calmer text and colours ---------- */
+:root[data-tone="soft"] {
+  --bg: #1d2027; --panel: #21252d; --elev: #272b34; --elev2: #2e333d;
+  --hover: rgba(255,255,255,.04); --active: rgba(255,255,255,.07);
+  --border: rgba(255,255,255,.07); --border2: rgba(255,255,255,.12);
+  --text: #d8dce3; --text2: #b3b9c4; --muted: #8b93a1; --dim: #6a7280;
+  --add: #6fcf9f; --del: #e88a90; --mod: #dcb96a;
+  --sel: color-mix(in srgb, var(--accent) 15%, transparent); --sel-line: color-mix(in srgb, var(--accent) 55%, transparent);
+  --shadow: 0 14px 40px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.07);
+  --toast-bg: #353b47;
+  --sx-kw: #c4a7e7; --sx-str: #a8d1a5; --sx-num: #e8a889; --sx-com: #737b8a; --sx-fn: #93b4ee; --sx-type: #e2c58a; --sx-tag: #e79aa0; --sx-attr: #8fcfe0;
+}
+:root[data-tone="soft"] .pill { background: color-mix(in srgb, var(--pc) 18%, transparent); color: color-mix(in srgb, var(--pc) 78%, var(--text)); }
+:root[data-tone="soft"] .pill.head, :root[data-tone="soft"] .here { background: color-mix(in srgb, var(--accent) 78%, var(--bg)); color: #fff; }
+:root[data-tone="soft"] .row.head { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+:root[data-tone="soft"] .pill.tag { background: var(--active); color: var(--text2); }
+:root[data-tone="soft"] #cnt-pull { background: #c9772e; } :root[data-tone="soft"] #cnt-push { background: #6474d8; }
