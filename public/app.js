@@ -29,11 +29,9 @@ const PREF_DEF = {
   theme: LS.get('theme', 'dark'), darkTone: 'soft', accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
   avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
   autoFetch: LS.get('autoFetch', false) ? 5 : 0, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
-  worktreeGuard: false, aiUsage: false, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
+  aiUsage: false, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
 };
 const P = Object.assign({}, PREF_DEF, LS.get('prefs', {}));
-// one-time: checking out inside a worktree works like anywhere else again (0.2.9)
-if (!LS.get('m029')) { P.worktreeGuard = false; LS.set('prefs', P); LS.set('m029', 1); }
 // one-time: profile photos / avatars became the default in 0.2.1
 if (!LS.get('m021')) { P.avatars = true; P.avatarPhotos = true; LS.set('prefs', P); LS.set('m021', 1); }
 const ACCENTS = { indigo: ['#7c8aff', '#5463ff'], blue: ['#4c9aff', '#1f6feb'], violet: ['#a77bff', '#7c4dff'], green: ['#3fcf8e', '#14a06a'], orange: ['#ff9a4c', '#e2700c'], pink: ['#f06bb3', '#d63384'], teal: ['#2fc6c6', '#0e9a9a'] };
@@ -643,7 +641,6 @@ function showRefPop(rowEl) {
   pop.ondblclick = (e) => {
     const it = e.target.closest('[data-ref]'); if (!it) return;
     const ref = findRef(it.dataset.ref); hideRefPop();
-    if (S.info?.worktree && P.worktreeGuard) { if (ref) selectCommit(ref.sha); return; }
     if (ref && ref.type !== 'tag' && !(ref.type === 'branch' && ref.name === S.info?.branch)) run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 전환` });
   };
   pop.oncontextmenu = (e) => {
@@ -1155,7 +1152,7 @@ function renderSidebar() {
     const isHead = r.type === 'branch' && r.name === head;
     const wt = r.type === 'branch' && !isHead ? otherWorktree(r.name) : null;
     const ic = r.type === 'tag' ? 'tag' : isHead ? 'check' : wt ? 'layers' : 'branch';
-    return `<div class="it${isHead ? ' head' : ''}${wt ? ' in-wt' : ''}${S.selected === r.sha ? ' selected' : ''}" style="${pad(d)}" data-ref="${esc(r.type)}:${esc(r.name)}" title="${esc(r.name)}${wt ? '\n다른 워크트리에서 사용 중: ' + esc(tilde(wt.path)) : ''}">${icon(ic)}<span class="nm">${escN(label)}</span>${wt ? `<span class="wt-tag">${esc(wt.path.split(/[\\/]/).pop())}</span>` : ''}${r.type === 'branch' ? trackHTML(r.track) : ''}</div>`;
+    return `<div class="it${isHead ? ' head' : ''}${wt ? ' in-wt' : ''}${S.selected === r.sha ? ' selected' : ''}" style="${pad(d)}" data-ref="${esc(r.type)}:${esc(r.name)}" title="${esc(r.name)}${wt ? '\n다른 폴더에서 열려 있어요: ' + esc(tilde(wt.path)) : ''}">${icon(ic)}<span class="nm">${escN(label)}</span>${wt ? `<span class="wt-tag">${esc(wt.path.split(/[\\/]/).pop())}</span>` : ''}${r.type === 'branch' ? trackHTML(r.track) : ''}</div>`;
   };
   const tree = (node, d, kp) => {
     let h = '';
@@ -1194,7 +1191,14 @@ function renderSidebar() {
   $('#sb-repo-path').innerHTML = S.info ? (S.info.worktree ? `<span class="wt-chip" title="${esc(tilde(S.info.main || ''))} 의 워크트리">${icon('layers')}워크트리</span>` : '') + esc(tilde(S.info.path)) : '';
   if (S.info && $('#sb-repo .repo-ic')?.dataset.repo !== S.info.path + P.repoLogos) { $('#sb-repo .repo-ic').outerHTML = logoHTML(S.info.path); $('#sb-repo .repo-ic').dataset.repo = S.info.path + P.repoLogos; }
   const cur = local.find((r) => r.name === head);
-  $('#sb-branch').innerHTML = `${icon('branch')}<span class="nm">${esc(head || (S.info?.head ? 'detached ' + S.info.head.slice(0, 7) : '—'))}</span>${cur ? trackHTML(cur.track) : ''}${icon('chev-down')}`;
+  $('#sb-branch').innerHTML = `${icon('branch')}<span class="nm">${escN(headLabel())}</span>${cur ? trackHTML(cur.track) : ''}${icon('chev-down')}`;
+}
+// HEAD is not on a branch: describe it by the branch whose position we are looking at, if any
+function headLabel() {
+  if (S.info?.branch) return S.info.branch;
+  if (!S.info?.head) return '—';
+  const at = S.refs.find((r) => r.type === 'branch' && r.sha === S.info.head) || S.refs.find((r) => r.type === 'remote' && r.sha === S.info.head);
+  return at ? `${at.name} (보기)` : `커밋 ${S.info.head.slice(0, 7)} (보기)`;
 }
 const findRef = (key) => { const i = key.indexOf(':'); const t = key.slice(0, i), n = key.slice(i + 1); return S.refs.find((r) => r.type === t && r.name === n); };
 
@@ -1206,7 +1210,7 @@ function renderTabs() {
 }
 function renderActions() {
   const cur = S.refs.find((r) => r.type === 'branch' && r.name === S.info?.branch);
-  $('#tb-status').innerHTML = S.info ? `${icon('branch')} ${escN(S.info.branch || 'detached')}${cur ? ' ' + trackHTML(cur.track) : ''}${S.status.length ? ` · 변경 ${S.status.length}` : ''}` : '';
+  $('#tb-status').innerHTML = S.info ? `${icon('branch')} ${escN(headLabel())}${cur ? ' ' + trackHTML(cur.track) : ''}${S.status.length ? ` · 변경 ${S.status.length}` : ''}` : '';
   const ahead = +(cur?.track?.match(/ahead (\d+)/) || [0, 0])[1], behind = +(cur?.track?.match(/behind (\d+)/) || [0, 0])[1];
   const cnt = (id, n) => { const el = $(id); el.hidden = !n; el.textContent = n > 99 ? '99+' : n; };
   cnt('#cnt-pull', behind); cnt('#cnt-push', ahead); cnt('#cnt-stash', S.stashes);
@@ -1319,63 +1323,8 @@ function divergedChoice(d, args, label) {
 
 // A branch can only be checked out in one worktree at a time (git rule).
 const otherWorktree = (branch) => (S.meta.worktrees || []).find((w) => w.branch === branch && w.path !== S.info?.path);
-async function worktreeChoice(branch, wtPath) {
-  const sha = S.refs.find((r) => r.type === 'branch' && r.name === branch)?.sha;
-  closeModal();
-  const L = $('#modal-layer');
-  L.hidden = false;
-  L.innerHTML = `<div class="modal"><h3>${icon('layers')} '${esc(branch)}' 는 다른 워크트리에서 사용 중이에요</h3>
-    <p>${esc(tilde(wtPath))}\n\ngit 은 같은 브랜치를 두 워크트리에서 동시에 체크아웃할 수 없어요. 어떻게 할까요?</p>
-    <div class="choices">
-      <button class="choice" data-c="open">${icon('external')}<span><b>그 워크트리를 탭으로 열기</b><small>${esc(wtPath.split(/[\\/]/).pop())} 에서 ${esc(branch)} 작업을 이어갑니다</small></span></button>
-      ${sha ? `<button class="choice" data-c="detach">${icon('commit')}<span><b>여기서는 그 커밋만 보기 (detached)</b><small>${esc(branch)} 가 가리키는 ${sha.slice(0, 7)} 로 이동 — 브랜치는 그대로 둡니다</small></span></button>
-      <button class="choice" data-c="branch">${icon('branch-plus')}<span><b>${esc(branch)} 에서 새 브랜치 만들기</b><small>같은 위치에서 다른 이름으로 작업합니다</small></span></button>` : ''}
-    </div><div class="btns"><button class="btn" id="m-cancel">취소</button></div></div>`;
-  modalResolve = () => {};
-  L.onmousedown = (e) => { if (e.target === L) closeModal(); };
-  L.onkeydown = (e) => { if (e.key === 'Escape') closeModal(); };
-  $('#m-cancel').onclick = () => closeModal();
-  L.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => {
-    closeModal();
-    if (b.dataset.c === 'open') openTab(wtPath);
-    if (b.dataset.c === 'detach') run('checkout', { ref: sha, kind: 'commit' }, { label: `${branch} 위치로 이동` });
-    if (b.dataset.c === 'branch') newBranch(sha);
-  }));
-  L.querySelector('[data-c]')?.focus();
-}
-
-// In a worktree tab, switching branches changes what that worktree folder has checked out.
-// A worktree is meant to stay on its branch, so never do it implicitly — ask.
-async function worktreeGuard(args, label) {
-  const name = args.kind === 'commit' ? args.ref.slice(0, 7) : args.ref;
-  const wtName = S.info.path.split(/[\\/]/).pop(), mainName = (S.info.main || '').split(/[\\/]/).pop();
-  closeModal();
-  const L = $('#modal-layer');
-  L.hidden = false;
-  L.innerHTML = `<div class="modal"><h3>${icon('layers')} 이 탭은 워크트리예요</h3>
-    <p>${esc(tilde(S.info.path))}\n현재 브랜치: ${esc(S.info.branch || 'detached')}\n\n여기서 전환하면 이 워크트리 폴더의 체크아웃이 ${esc(name)} 로 바뀝니다.</p>
-    <div class="choices">
-      ${S.info.main ? `<button class="choice" data-c="main">${icon('external')}<span><b>원래 저장소(${esc(mainName)})에서 전환</b><small>워크트리는 그대로 두고, 원래 저장소 탭을 열어 거기서 ${esc(name)} 로 전환합니다</small></span></button>` : ''}
-      <button class="choice" data-c="view">${icon('eye')}<span><b>전환하지 않고 보기만</b><small>그래프에서 ${esc(name)} 위치로 이동만 합니다</small></span></button>
-      <button class="choice" data-c="here">${icon('checkout')}<span><b>이 워크트리(${esc(wtName)})를 ${esc(name)} 로 전환</b><small>워크트리의 브랜치가 바뀝니다</small></span></button>
-    </div><div class="btns"><button class="btn" id="m-cancel">취소</button></div></div>`;
-  modalResolve = () => {};
-  L.onmousedown = (e) => { if (e.target === L) closeModal(); };
-  L.onkeydown = (e) => { if (e.key === 'Escape') closeModal(); };
-  $('#m-cancel').onclick = () => closeModal();
-  L.querySelectorAll('[data-c]').forEach((b) => (b.onclick = async () => {
-    closeModal();
-    const c = b.dataset.c;
-    if (c === 'here') run('checkout', args, { label, force: true });
-    if (c === 'view') { const sha = args.kind === 'commit' ? args.ref : S.refs.find((r) => r.name === args.ref)?.sha; if (sha) selectCommit(sha); }
-    if (c === 'main') { await openTab(S.info.main); run('checkout', args, { label, force: true }); }
-  }));
-  L.querySelector('[data-c]')?.focus();
-}
-
 /** @param {string} action @param {Record<string, any>} [args] @param {RunOptions} [opts] @returns {Promise<boolean>} */
 async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
-  if (action === 'checkout' && S.info?.worktree && P.worktreeGuard && !force && !quiet) { worktreeGuard(args, label); return false; }
   let detachedFor = null; // origin/x while local x lives in another worktree → stay here, check out that commit
   if (action === 'checkout' && args.kind === 'remote' && !args.mode) {
     const local = args.ref.slice(args.ref.indexOf('/') + 1);
@@ -1383,7 +1332,8 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
     if (wt) { detachedFor = { local, wt, remote: args.ref }; args = { ...args, mode: 'detach' }; }
   } else if (action === 'checkout' && args.kind === 'branch') {
     const wt = otherWorktree(args.ref);
-    if (wt) { worktreeChoice(args.ref, wt.path); return false; }
+    const sha = S.refs.find((x) => x.type === 'branch' && x.name === args.ref)?.sha;
+    if (wt && sha) { detachedFor = { local: args.ref, wt, remote: args.ref, sha }; args = { ref: sha, kind: 'commit' }; }
   }
   const btn = document.querySelector(`[data-act="${action}"]`);
   btn?.classList.add('busy');
@@ -1393,9 +1343,10 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
     const r = await post('action', { repo: S.repo }, { action, args });
     const undo = noUndo ? null : undoFor(action, args, before);
     if (detachedFor) {
-      const d = detachedFor, sha = S.refs.find((x) => x.type === 'remote' && x.name === d.remote)?.sha;
-      toast(`${d.remote} 위치를 체크아웃했어요 (브랜치 없이)\n로컬 ${d.local} 는 워크트리 '${d.wt.path.split(/[\\/]/).pop()}' 에서 사용 중이라, 이 폴더에서는 그 커밋만 꺼냈습니다. 여기서 커밋하려면 새 브랜치를 만드세요.`, 'ok',
-        [{ label: '새 브랜치 만들기', primary: true, run: () => newBranch(sha || 'HEAD') }, { label: '되돌리기', run: undoFor(action, args, before) || (() => {}) }]);
+      const d = detachedFor, sha = d.sha || S.refs.find((x) => x.type === 'remote' && x.name === d.remote)?.sha;
+      const folder = d.wt.path.split(/[\\/]/).pop();
+      toast(`${d.remote} 로 이동했어요\n이 브랜치는 '${folder}' 폴더에서 열려 있어서, 여기서는 같은 내용을 보기만 합니다. 여기서 고치려면 새 브랜치를 만드세요.`, 'ok',
+        [{ label: '새 브랜치 만들기', run: () => newBranch(sha || 'HEAD') }, { label: `'${folder}' 열기`, run: () => openTab(d.wt.path) }]);
       S.lastUndo = { fn: undoFor(action, args, before), label: label || action, at: Date.now() };
       return true;
     }
@@ -1409,7 +1360,10 @@ async function run(action, args = {}, { label, quiet, noUndo, force } = {}) {
     const auth = AUTH_RE.test(e.message);
     if (e.message.startsWith('DIVERGED ')) { divergedChoice(JSON.parse(e.message.slice(9)), args, label); return false; }
     const wtm = e.message.match(/'([^']+)' is already (?:used by|checked out at) worktree at '([^']+)'/) || e.message.match(/'([^']+)' is already checked out at '([^']+)'/);
-    if (wtm) { worktreeChoice(wtm[1], wtm[2]); return false; }
+    if (wtm && !force) {
+      const sha = S.refs.find((x) => x.type === 'branch' && x.name === wtm[1])?.sha;
+      if (sha) { await loadRepo(S.repo, { keep: true }); return run('checkout', { ref: sha, kind: 'commit' }, { label, force: true }); }
+    }
     const hint = /repository not found/i.test(e.message) ? '\n\n→ 원격 주소가 바뀌었거나, 이 저장소에 권한이 없는 계정/키로 접속했을 수 있어요.' : '';
     toast((label || action) + ' 실패\n' + e.message.slice(0, 900) + hint, 'err', auth ? [{ label: '원격 · 연결 설정', primary: true, run: () => openSettings('remote') }] : []);
     return false;
@@ -1581,7 +1535,7 @@ function branchItems(ref) {
   if (items.length) items.push('-');
   if (!isCur) {
     const wt = ref.type === 'branch' ? otherWorktree(name) : null;
-    if (wt) items.push({ label: `워크트리 열기 (${wt.path.split(/[\\/]/).pop()})`, icon: 'layers', tip: `${name} 는 이 워크트리에서 사용 중이에요: ${tilde(wt.path)}`, run: () => openTab(wt.path) });
+    if (wt) items.push({ label: `이 브랜치가 열려 있는 폴더 열기 (${wt.path.split(/[\\/]/).pop()})`, icon: 'folder', tip: tilde(wt.path), run: () => openTab(wt.path) });
     if (ref.type === 'branch') items.push({ label: `${name} 로 전환`, hint: 'checkout', run: () => run('checkout', { ref: name, kind: 'branch' }, { label: `${name} 전환` }) });
     else if (ref.type === 'remote') items.push({ label: `${name} 위치로 전환`, hint: 'checkout', tip: '같은 이름의 로컬 브랜치가 없으면 만들고, 뒤처져 있으면 원격 위치까지 빨리감기합니다. 갈라져 있으면 먼저 물어봐요.', run: () => run('checkout', { ref: name, kind: 'remote' }, { label: `${name} 전환` }) });
     else items.push({ label: `태그 ${name} 로 이동 (detached)`, hint: 'checkout', run: () => run('checkout', { ref: ref.sha, kind: 'commit' }, { label: '이동' }) });
@@ -1866,7 +1820,6 @@ async function settingsBody(sec) {
     ${optRow('자동 가져오기', '주기적으로 fetch 해서 ↑↓ 를 최신으로 유지', optSeg('autoFetch', [[0, '끔'], [5, '5분'], [15, '15분'], [30, '30분']]))}
     ${optRow('가져올 때 정리 (prune)', '원격에서 지워진 브랜치를 로컬 목록에서도 지움', optToggle('fetchPrune'))}
     ${optRow('풀 방식', 'git 설정 기본값 / 머지 / 리베이스 / 빨리감기만', optSeg('pullMode', [['default', '기본'], ['merge', '머지'], ['rebase', '리베이스'], ['ff-only', 'FF만']]))}
-    ${optRow('워크트리에서 전환 전에 확인', '켜면 워크트리 탭에서는 더블클릭으로 전환되지 않고, 전환할 때 먼저 물어봅니다 (기본: 끔)', optToggle('worktreeGuard'))}
     ${optRow('스태시에 새 파일 포함', 'git stash -u', optToggle('stashUntracked'))}
     ${optRow('푸시 전에 확인', '', optToggle('confirmPush'))}
     <p class="opt-note">머지·리베이스·리셋·삭제는 항상 확인 창이 뜨고, 실행 후 토스트의 <b>되돌리기</b> 또는 <kbd>⌘Z</kbd> 로 취소할 수 있어요.</p>`;
@@ -2144,7 +2097,6 @@ function bind() {
   rows.addEventListener('dblclick', (e) => {
     const p = e.target.closest('[data-ref]'); if (!p) return;
     const ref = findRef(p.dataset.ref);
-    if (S.info?.worktree && P.worktreeGuard) return; // a worktree stays on its branch: double-click only looks
     if (ref && ref.type !== 'tag' && !(ref.type === 'branch' && ref.name === S.info?.branch)) run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 전환` });
   });
   rows.addEventListener('contextmenu', (e) => {
@@ -2182,7 +2134,6 @@ function bind() {
     const it = e.target.closest('[data-ref]'); if (!it) return;
     const ref = findRef(it.dataset.ref);
     if (!ref || ref.type === 'tag' || (ref.type === 'branch' && ref.name === S.info?.branch)) return;
-    if (S.info?.worktree && P.worktreeGuard) return; // already selected by the first click
     run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 전환` });
   });
   $('#sb-body').addEventListener('contextmenu', (e) => { const it = e.target.closest('[data-ref]'); if (!it) return; e.preventDefault(); const ref = findRef(it.dataset.ref); if (ref) showMenu(refMenu(ref), e.clientX, e.clientY); });
