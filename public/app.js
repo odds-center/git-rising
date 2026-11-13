@@ -106,6 +106,7 @@ const ICONS = {
   'check-circle': '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/>',
 };
 const icon = (n) => `<svg class="i" viewBox="0 0 24 24">${ICONS[n] || ''}</svg>`;
@@ -319,6 +320,7 @@ async function loadRepo(repo, { keep = false, open = false, manual = false } = {
     }
     rebuild();
     renderTabs(); renderSidebar(); renderBanner(); renderStatusbar(); renderActions();
+    if (switching || !ID.data) loadIdentity();
     if (S.selected && vIndex(S.selected) < 0) S.selected = null;
     if (S.selected) selectCommit(S.selected, { scroll: false, force: true }); else renderDetail();
     $('#empty').hidden = true;
@@ -725,7 +727,7 @@ function renderDetail() {
   if (d.wip) {
     const staged = S.status.filter((f) => f.staged), rest = S.status.filter((f) => !f.staged);
     S.detailFiles = [...staged, ...rest];
-    el.innerHTML = `<div class="d-head"><div class="d-meta"><span class="badge">작업 중</span>${esc(S.info?.branch || 'detached')}</div><h2 class="d-subject">커밋 안 한 변경사항</h2></div>
+    el.innerHTML = `<div class="d-head"><div class="d-meta"><span class="badge">작업 중</span>${esc(S.info?.branch || 'detached')}</div><h2 class="d-subject">커밋 안 한 변경사항</h2>${ID.data?.effective?.email ? `<div class="d-as">커밋하면 <b>${escN(ID.data.effective.name)}</b> &lt;${esc(ID.data.effective.email)}&gt; 로 기록됩니다</div>` : ''}</div>
       ${statsHTML(S.status)}
       ${staged.length ? `<div class="wip-sec" title="git add 된 파일 — 다음 커밋에 들어갑니다">스테이징됨 · ${staged.length}</div>${fileListHTML(staged, 0)}` : ''}
       ${rest.length ? `<div class="wip-sec" title="아직 git add 하지 않은 변경 / 새 파일">스테이징 안 됨 · ${rest.length}</div>${fileListHTML(rest, staged.length)}` : ''}`;
@@ -1647,6 +1649,8 @@ function actionItems() {
     A('저장소 복제 (clone) — HTTPS / SSH 주소', 'cloud-down', cloneRepo),
     S.repo && A('원격 저장소 관리 (추가 · 주소 변경 · HTTPS↔SSH)', 'cloud', () => openSettings('remote')),
     A('저장소 다시 찾기', 'refresh', () => { loadRepos(true); openPalette('repos'); }, '홈 폴더를 다시 스캔'),
+    S.repo && A('커밋 작성자(프로필) 바꾸기', 'user', identityMenu),
+    A('커밋 프로필 관리', 'user', () => openSettings('profile')),
     A('SSH 설정 / 연결 확인', 'key', () => openSettings('ssh')),
     A('Claude 연결 (MCP)', 'bot', () => openSettings('mcp')),
     A('테마 전환 (라이트 / 다크)', S.themeName === 'dark' ? 'sun' : 'moon', toggleTheme),
@@ -1754,7 +1758,7 @@ function applyGeometry() {
 
 const SET_SECTIONS = [
   ['look', 'monitor', '화면'], ['graph', 'graph', '그래프'], ['git', 'branch', 'Git 동작'], ['term', 'terminal', '터미널'],
-  ['remote', 'cloud', '원격 · 연결'], ['ssh', 'key', 'SSH 인증'], ['repos', 'folder', '저장소 찾기'], ['mcp', 'bot', 'Claude 연결'], ['update', 'download', '업데이트'], ['keys', 'keyboard', '단축키'],
+  ['profile', 'user', '커밋 프로필'], ['remote', 'cloud', '원격 · 연결'], ['ssh', 'key', 'SSH 인증'], ['repos', 'folder', '저장소 찾기'], ['mcp', 'bot', 'Claude 연결'], ['update', 'download', '업데이트'], ['keys', 'keyboard', '단축키'],
 ];
 const optSeg = (k, opts) => `<div class="seg" data-seg="${k}">${opts.map(([v, l]) => `<button data-val="${esc(v)}" class="${String(P[k]) === String(v) ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>`;
 const optToggle = (k) => `<button class="switch${P[k] ? ' on' : ''}" data-toggle="${k}" role="switch" aria-checked="${!!P[k]}"><span></span></button>`;
@@ -1807,6 +1811,19 @@ async function settingsBody(sec) {
     ${optRow('셸', '비워두면 기본 셸 ($SHELL / PowerShell)', `<input class="field" id="set-shell" style="width:220px;margin:0" placeholder="${S.platform === 'win32' ? 'C:\\\\...\\\\pwsh.exe' : '/bin/zsh'}" value="${esc(P.termShell)}">`)}
     ${optRow('글자 크기', '', optSeg('termFont', [[11, '11'], [12, '12'], [13, '13'], [14, '14']]))}
     ${optRow('외부 터미널', 'Terminal.app / Windows Terminal 로 열기', '<button class="btn sm" id="set-extterm">열기</button>')}${tools}`;
+  }
+  if (sec === 'profile') {
+    const d = (await loadIdentity()) || { profiles: [], suggestions: [], global: {}, effective: null };
+    const cur = d.effective || {};
+    const rows = d.profiles.map((p) => `<div class="opt"><div class="opt-tx"><div class="opt-t">${profileAvatar(p.name, p.email)} ${escN(p.label)}${p.email === cur.email && p.name === cur.name ? ' <span class="badge ok">이 저장소에서 사용 중</span>' : ''}</div><div class="opt-d">${escN(p.name)} &lt;${esc(p.email)}&gt;${p.sshKey ? ' · SSH 키 ' + esc(p.sshKey.split('/').pop()) : ''}</div></div>
+      <div class="opt-c">${S.repo ? `<button class="btn sm primary" data-pf-apply="${p.id}">이 저장소에 적용</button>` : ''}<button class="btn sm" data-pf-edit="${p.id}">수정</button><button class="btn sm" data-pf-del="${p.id}">삭제</button></div></div>`).join('');
+    const sug = d.suggestions.map((sg, i) => `<div class="opt"><div class="opt-tx"><div class="opt-t">${profileAvatar(sg.name, sg.email)} ${escN(sg.name)}${sg.global ? ' <span class="badge">전역 설정</span>' : ''}</div><div class="opt-d">${esc(sg.email)}${sg.count ? ` · 이 저장소 최근 커밋 ${sg.count}개` : ''}</div></div><div class="opt-c"><button class="btn sm" data-pf-sug="${i}">프로필로 저장</button></div></div>`).join('');
+    return `<p class="opt-note">커밋에 남는 <b>작성자(이름·이메일)</b>를 프로필로 저장해 두고 저장소마다 골라 씁니다. SSH 키를 지정하면 그 저장소의 push / pull 도 그 키로 합니다 — GitHub 계정을 여러 개 쓸 때 유용해요.</p>
+      ${S.repo ? optRow('이 저장소의 커밋 작성자', cur.email ? `${escN(cur.name)} &lt;${esc(cur.email)}&gt;${d.local ? '' : ' — 전역 설정 사용 중'}` : '설정되지 않음', d.local ? '<button class="btn sm" id="pf-unset">전역 설정으로</button>' : '') : ''}
+      ${rows || '<p class="opt-note">저장된 프로필이 없어요.</p>'}
+      ${optRow('새 프로필', '', '<button class="btn sm primary" id="pf-new">만들기</button>')}
+      ${sug ? `<h4 class="set-h4">이 PC 에서 쓰던 정보</h4>${sug}` : ''}
+      ${optRow('전역 기본 작성자', d.global?.email ? `${escN(d.global.name)} &lt;${esc(d.global.email)}&gt;` : '설정되지 않음', '')}`;
   }
   if (sec === 'remote') {
     const R = S.repo ? await api('remotes', { repo: S.repo }).catch(() => ({ remotes: [] })) : { remotes: [] };
@@ -1898,6 +1915,13 @@ function wireSettings(sec, show) {
   $('#ssh-convert')?.addEventListener('click', async () => { try { const r = await post('action', { repo: S.repo }, { action: 'remoteToSsh', args: { remote: 'origin' } }); out('#ssh-out', '✓ ' + r.output); } catch (e) { out('#ssh-out', e.message); } });
   body.querySelectorAll('[data-sshadd]').forEach((b) => (b.onclick = async () => { out('#ssh-out', '암호를 입력하세요…'); try { await post('action', { repo: S.repo || home() }, { action: 'sshAdd', args: { key: b.dataset.sshadd } }); out('#ssh-out', '✓ 등록했어요. 이제 자동으로 인증돼요.'); } catch (e) { out('#ssh-out', '✗ ' + e.message); } }));
   $('#set-roots')?.addEventListener('click', editRoots);
+  const pfById = (id) => ID.data?.profiles.find((p) => p.id === id);
+  body.querySelectorAll('[data-pf-apply]').forEach((b) => (b.onclick = async () => { await applyProfile(pfById(b.dataset.pfApply)); show('profile'); }));
+  body.querySelectorAll('[data-pf-edit]').forEach((b) => (b.onclick = () => editProfile(pfById(b.dataset.pfEdit))));
+  body.querySelectorAll('[data-pf-del]').forEach((b) => (b.onclick = async () => { await post('identity', {}, { action: 'delete', id: b.dataset.pfDel }); show('profile'); }));
+  body.querySelectorAll('[data-pf-sug]').forEach((b) => (b.onclick = () => { const sg = ID.data.suggestions[+b.dataset.pfSug]; editProfile(null, { label: sg.global ? '기본' : sg.name, name: sg.name, email: sg.email, sshKey: '' }); }));
+  $('#pf-new')?.addEventListener('click', () => editProfile());
+  $('#pf-unset')?.addEventListener('click', async () => { await post('identity', { repo: S.repo }, { action: 'unset' }); toast('이 저장소는 전역 설정을 따릅니다', 'ok'); show('profile'); });
   const rmRun = async (action, args) => { try { const r = await post('action', { repo: S.repo }, { action, args }); toast((r.output || '완료').trim(), 'ok'); loadRepo(S.repo, { keep: true }); openSettings('remote'); } catch (e) { out('#rm-out', '✗ ' + e.message); } };
   body.querySelectorAll('[data-rm-act]').forEach((b) => (b.onclick = () => rmRun(b.dataset.rmAct, { remote: b.dataset.rm })));
   body.querySelectorAll('[data-rm-edit]').forEach((b) => (b.onclick = async () => { const r = await modal({ title: `${b.dataset.rmEdit} 주소 변경`, input: 'https://github.com/owner/repo.git', inputValue: b.dataset.url, ok: '변경' }); if (r) await rmRun('remoteSetUrl', { name: b.dataset.rmEdit, url: r.value }); else openSettings('remote'); }));
@@ -2139,6 +2163,7 @@ function bind() {
   $('#palette-layer').addEventListener('mousedown', (e) => { if (e.target.id === 'palette-layer') closePalette(); });
   $('#sb-theme').onclick = toggleTheme;
   $('#sb-ai').onclick = aiPopover;
+  $('#tb-author').onclick = identityMenu;
   $('#sb-settings').onclick = () => openSettings();
   $('#sb-update').onclick = async () => {
     if (S.update?.state !== 'available') return;
@@ -2222,6 +2247,79 @@ function bind() {
 
 
 
+
+// ================================================================ commit author profiles
+const ID = { data: null };
+const profileAvatar = (name, email, cls = 'av sm') => `<span class="${cls}" style="background:${avColor(email)}">${esc(initials(name))}${P.avatarPhotos && S.repo ? `<img src="/api/avatar?${new URLSearchParams({ email, name })}" onerror="this.remove()">` : ''}</span>`;
+async function loadIdentity() {
+  try { ID.data = await api('identity', S.repo ? { repo: S.repo } : {}); } catch { ID.data = null; }
+  renderIdentity();
+  return ID.data;
+}
+function renderIdentity() {
+  const el = $('#tb-author');
+  const e = ID.data?.effective;
+  el.hidden = !S.repo || !ID.data;
+  if (el.hidden) return;
+  const prof = e && ID.data.profiles.find((p) => p.email === e.email && p.name === e.name);
+  el.innerHTML = e?.email
+    ? `${profileAvatar(e.name, e.email)}<span class="au-n">${escN(prof?.label || e.name)}</span>${ID.data.local ? '' : '<span class="au-g" title="이 저장소에 따로 지정하지 않아 전역 설정을 쓰고 있어요">전역</span>'}${icon('chev-down')}`
+    : `${icon('alert')}<span class="au-n">작성자 미설정</span>${icon('chev-down')}`;
+  el.dataset.tip = e?.email ? `이 저장소의 커밋 작성자: ${e.name} <${e.email}>${ID.data.sshKey ? ' · SSH 키 ' + ID.data.sshKey.split('/').pop() : ''}|눌러서 프로필 바꾸기` : '커밋 작성자가 설정돼 있지 않아요|눌러서 프로필 고르기';
+}
+async function applyProfile(p, scope = 'local') {
+  try {
+    await post('identity', { repo: S.repo }, { action: 'apply', name: p.name, email: p.email, sshKey: scope === 'local' ? p.sshKey || '' : undefined, scope });
+    toast(`${scope === 'global' ? '전역 기본' : '이 저장소의'} 커밋 작성자: ${p.name}\n${p.email}${scope === 'local' && p.sshKey ? '\nSSH 키: ' + p.sshKey.split('/').pop() : ''}`, 'ok');
+    await loadIdentity();
+  } catch (e) { toast('프로필 적용 실패\n' + e.message, 'err'); }
+}
+async function identityMenu() {
+  const d = await loadIdentity();
+  if (!d) return;
+  const r = $('#tb-author').getBoundingClientRect();
+  const cur = d.effective || {};
+  const isCur = (p) => p.email === cur.email && p.name === cur.name;
+  const item = (p, label) => ({ label: `${isCur(p) ? '✓ ' : ''}${label || p.label || p.name}`, hint: p.email, icon: 'user', run: () => applyProfile(p) });
+  showMenu([
+    { head: `이 저장소의 커밋 작성자${cur.email ? ` · ${cur.name}` : ''}` },
+    ...d.profiles.map((p) => item(p)),
+    ...(d.suggestions.length ? [d.profiles.length ? '-' : null, { head: '이 PC 에서 쓰던 정보' }, ...d.suggestions.map((sg) => item(sg, sg.name + (sg.global ? ' (전역 설정)' : '')))] : []),
+    '-',
+    d.local ? { label: '전역 설정으로 되돌리기', icon: 'undo', tip: '이 저장소에만 지정한 작성자·SSH 키를 지웁니다', run: async () => { await post('identity', { repo: S.repo }, { action: 'unset' }); toast('이 저장소는 전역 설정을 따릅니다', 'ok'); loadIdentity(); } } : null,
+    { label: '새 프로필 만들기…', icon: 'plus', run: () => editProfile() },
+    { label: '프로필 관리…', icon: 'settings', run: () => openSettings('profile') },
+  ], Math.min(r.left, innerWidth - 340), r.bottom + 4);
+}
+async function editProfile(p = null, prefill = null) {
+  const ssh = await api('ssh').catch(() => ({ keys: [] }));
+  const v = p || prefill || { label: '', name: '', email: '', sshKey: '' };
+  closeModal();
+  const L = $('#modal-layer');
+  L.hidden = false;
+  L.innerHTML = `<div class="modal"><h3>${p ? '프로필 수정' : '새 커밋 프로필'}</h3>
+    <p>커밋에 남는 이름·이메일입니다. 저장소마다 다른 프로필을 고를 수 있어요.</p>
+    <label class="fl-l">프로필 이름<input class="field" id="pf-label" placeholder="회사 / 개인" value="${esc(v.label || '')}"></label>
+    <label class="fl-l">작성자 이름 (user.name)<input class="field" id="pf-name" placeholder="홍길동" value="${esc(v.name || '')}"></label>
+    <label class="fl-l">이메일 (user.email)<input class="field" id="pf-email" placeholder="me@example.com" value="${esc(v.email || '')}"></label>
+    <label class="fl-l">SSH 키 (선택) — 이 프로필을 쓰는 저장소는 이 키로 push / pull<select class="field" id="pf-key"><option value="">기본 (ssh 설정 그대로)</option>${ssh.keys.map((k) => `<option value="${esc(k.path)}"${v.sshKey === k.path ? ' selected' : ''}>${esc(k.name)}${k.comment ? ' — ' + esc(k.comment) : ''}</option>`).join('')}</select></label>
+    <div class="set-out" id="pf-out"></div>
+    <div class="btns"><button class="btn" id="m-cancel">취소</button><button class="btn primary" id="pf-save">저장</button></div></div>`;
+  modalResolve = () => {};
+  L.onmousedown = (e) => { if (e.target === L) closeModal(); };
+  L.onkeydown = (e) => { if (e.key === 'Escape') closeModal(); if (e.key === 'Enter' && e.target.tagName === 'INPUT') $('#pf-save').click(); };
+  $('#m-cancel').onclick = () => closeModal();
+  $('#pf-save').onclick = async () => {
+    try {
+      const res = await post('identity', {}, { action: 'save', profile: { id: p?.id, label: $('#pf-label').value, name: $('#pf-name').value, email: $('#pf-email').value, sshKey: $('#pf-key').value } });
+      closeModal();
+      toast(`프로필 저장: ${res.profile.label}`, 'ok', S.repo ? [{ label: '이 저장소에 적용', primary: true, run: () => applyProfile(res.profile) }] : []);
+      await loadIdentity();
+      if (S.setSec === 'profile') openSettings('profile');
+    } catch (e) { $('#pf-out').textContent = '✗ ' + e.message; }
+  };
+  setTimeout(() => $('#pf-label').focus(), 0);
+}
 
 // ================================================================ AI usage in the status bar (opt-in)
 const AI = { data: null, timer: null };

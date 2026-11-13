@@ -1168,6 +1168,75 @@ async function shellToolsAction(body) {
   throw httpError(400, 'unknown action');
 }
 
+// ---------- commit author profiles (who commits are made as, per repository) ----------
+const cfgGet = (repo, scope, key) => git(repo, ['config', ...(scope ? [scope] : []), '--get', key]).then((v) => v.trim(), () => '');
+const cleanField = (v) => String(v ?? '').replace(/[\r\n\0]/g, ' ').trim().slice(0, 200);
+function sshKeyPath(k) {
+  if (!k) return '';
+  const full = path.resolve(String(k).replace(/^~(?=$|[\\/])/, os.homedir()));
+  if (!full.startsWith(path.join(os.homedir(), '.ssh') + path.sep) || !fs.existsSync(full)) throw httpError(400, 'SSH 키는 ~/.ssh 안의 파일이어야 해요');
+  return full;
+}
+async function apiIdentity(q, body) {
+  const cfg = readJSON(CONFIG_FILE, {});
+  const profiles = Array.isArray(cfg.profiles) ? cfg.profiles : [];
+  if (body) {
+    if (body.action === 'save') {
+      const p = { id: body.profile?.id || crypto.randomBytes(6).toString('hex'), label: cleanField(body.profile?.label), name: cleanField(body.profile?.name), email: cleanField(body.profile?.email), sshKey: body.profile?.sshKey ? sshKeyPath(body.profile.sshKey) : '' };
+      if (!p.name || !/^[^@\s]+@[^@\s]+$/.test(p.email)) throw httpError(400, '이름과 올바른 이메일이 필요해요');
+      if (!p.label) p.label = p.name;
+      const i = profiles.findIndex((x) => x.id === p.id);
+      if (i === -1) profiles.push(p); else profiles[i] = p;
+      writeJSON(CONFIG_FILE, { ...cfg, profiles });
+      return { ok: true, profile: p };
+    }
+    if (body.action === 'delete') {
+      writeJSON(CONFIG_FILE, { ...cfg, profiles: profiles.filter((x) => x.id !== body.id) });
+      return { ok: true };
+    }
+    if (body.action === 'apply') {
+      const repo = await resolveRepo(q.repo);
+      const scope = body.scope === 'global' ? '--global' : '--local';
+      const name = cleanField(body.name), email = cleanField(body.email);
+      if (!name || !/^[^@\s]+@[^@\s]+$/.test(email)) throw httpError(400, '이름과 올바른 이메일이 필요해요');
+      await git(repo, ['config', scope, 'user.name', name]);
+      await git(repo, ['config', scope, 'user.email', email]);
+      if (scope === '--local' && body.sshKey !== undefined) {
+        const key = body.sshKey ? sshKeyPath(body.sshKey) : '';
+        // use exactly this key for this repository's pushes/pulls (several GitHub accounts on one machine)
+        if (key) await git(repo, ['config', '--local', 'core.sshCommand', `ssh -i "${key}" -o IdentitiesOnly=yes`]);
+        else await git(repo, ['config', '--local', '--unset', 'core.sshCommand']).catch(() => {});
+      }
+      return { ok: true, output: `${name} <${email}>` };
+    }
+    if (body.action === 'unset') { // go back to the global identity for this repository
+      const repo = await resolveRepo(q.repo);
+      for (const k of ['user.name', 'user.email', 'core.sshCommand']) await git(repo, ['config', '--local', '--unset', k]).catch(() => {});
+      return { ok: true };
+    }
+    throw httpError(400, 'unknown action');
+  }
+  const out = { profiles, global: { name: '', email: '' }, local: null, effective: null, sshKey: '', suggestions: [] };
+  const anyRepo = q.repo ? await resolveRepo(q.repo).catch(() => null) : null;
+  const base = anyRepo || os.homedir();
+  [out.global.name, out.global.email] = await Promise.all([cfgGet(base, '--global', 'user.name'), cfgGet(base, '--global', 'user.email')]);
+  if (anyRepo) {
+    const [ln, le, en, ee, sshCmd] = await Promise.all([cfgGet(anyRepo, '--local', 'user.name'), cfgGet(anyRepo, '--local', 'user.email'), cfgGet(anyRepo, '', 'user.name').catch(() => ''), cfgGet(anyRepo, '', 'user.email').catch(() => ''), cfgGet(anyRepo, '--local', 'core.sshCommand')]);
+    out.local = ln || le ? { name: ln, email: le } : null;
+    out.effective = { name: en, email: ee };
+    out.sshKey = (sshCmd.match(/-i\s+"?([^"\s]+)"?/) || [])[1] || '';
+    // identities this person has already committed with here (same name or same email as a known one)
+    const log = await git(anyRepo, ['log', '--all', '-n', '400', '--format=%an%x00%ae']).catch(() => '');
+    const seen = new Map();
+    for (const l of log.split('\n')) { const [n, e] = l.split('\0'); if (n && e) seen.set(e, { name: n, email: e, count: (seen.get(e)?.count || 0) + 1 }); }
+    const mine = new Set([out.global.name, ln, ...profiles.map((p) => p.name)].filter(Boolean));
+    const mineMail = new Set([out.global.email, le, ...profiles.map((p) => p.email)].filter(Boolean));
+    out.suggestions = [...seen.values()].filter((a) => (mine.has(a.name) || mineMail.has(a.email)) && !profiles.some((p) => p.email === a.email)).sort((a, b) => b.count - a.count).slice(0, 5);
+  }
+  if (out.global.email && !profiles.some((p) => p.email === out.global.email) && !out.suggestions.some((x) => x.email === out.global.email)) out.suggestions.unshift({ name: out.global.name, email: out.global.email, count: 0, global: true });
+  return out;
+}
+
 // vendored browser libraries for previews / terminal (served from node_modules)
 const VENDOR = {
   'docx-preview.js': 'docx-preview/dist/docx-preview.min.js',
@@ -1534,6 +1603,7 @@ const routes = {
   '/api/filelog': apiFileLog,
   '/api/remotes': apiRemotes,
   '/api/aiusage': apiAiUsage,
+  '/api/identity': apiIdentity,
   '/api/stashes': apiStashes,
   '/api/shelltools': async (_q, body) => (body ? shellToolsAction(body) : apiShellTools()),
   // UI state (tabs, preferences, column widths). Kept in a file because the app's origin
@@ -1607,7 +1677,7 @@ export function startServer(hooks = {}) {
     const handler = routes[url.pathname];
     if (handler) {
       const WRITE = ['/api/pick', '/api/action', '/api/config', '/api/askpass/answer', '/api/openfile', '/api/ui', '/api/clone'];
-      const MIXED = ['/api/update', '/api/mcp', '/api/state', '/api/shelltools']; // GET = read status, POST = do something
+      const MIXED = ['/api/update', '/api/mcp', '/api/state', '/api/shelltools', '/api/identity']; // GET = read status, POST = do something
       const isWrite = WRITE.includes(url.pathname) || (MIXED.includes(url.pathname) && req.method !== 'GET');
       if (isWrite && (req.method !== 'POST' || req.headers['x-gittree'] !== '1')) {
         // custom header => browsers can't send it cross-origin without a preflight we never approve

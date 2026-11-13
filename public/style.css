@@ -594,3 +594,17 @@ body.busy #progress i { opacity: 1; animation: prog 1.05s cubic-bezier(.4,0,.2,1
 #cnt-pull { background: #e0730d; color: #fff; }
 #cnt-push { background: #5b6cff; color: #fff; }
 #cnt-stash { background: #6b7280; color: #fff; }
+
+/* ---------- commit author profile ---------- */
+#tb-author { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 7px 0 4px; border-radius: 8px; color: var(--text2); background: var(--elev2); box-shadow: inset 0 0 0 1px var(--border); font-size: .92em; font-weight: 500; white-space: nowrap; max-width: 220px; }
+#tb-author[hidden] { display: none; }
+#tb-author:hover { color: var(--text); box-shadow: inset 0 0 0 1px var(--border2); }
+#tb-author > svg { width: 11px; height: 11px; color: var(--muted); }
+#tb-author .au-n { overflow: hidden; text-overflow: ellipsis; }
+.au-g { font-size: 10px; padding: 0 5px; border-radius: 6px; background: var(--active); color: var(--muted); line-height: 15px; }
+.av.sm { width: 18px; height: 18px; font-size: 8.5px; display: inline-flex; vertical-align: -4px; }
+.fl-l { display: block; font-size: .9em; color: var(--muted); margin-bottom: 2px; }
+.fl-l .field { margin-top: 4px; }
+select.field { appearance: none; -webkit-appearance: none; height: 32px; color: var(--text); font: inherit; }
+.d-as { margin-top: 6px; color: var(--muted); font-size: .9em; }
+.d-as b { color: var(--text2); }
