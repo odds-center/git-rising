@@ -638,3 +638,8 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
 .tb[data-act=fetch].busy svg, .tb[data-act=reload].busy svg { animation: spin .9s linear infinite; }
 .tb.busy:not([data-act=fetch]):not([data-act=reload]) { animation: tbpulse 1s ease-in-out infinite; background: var(--active); }
 @keyframes tbpulse { 50% { opacity: .5; } }
+
+.st-clear { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 7px; border-radius: 6px; font-size: .84em; color: var(--muted); }
+.st-clear svg { width: 11px; height: 11px; }
+.st-clear:hover { color: #fff; background: var(--del); }
+.st-hint { margin-left: auto; }

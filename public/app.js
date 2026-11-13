@@ -727,7 +727,7 @@ function stashSectionHTML() {
   const list = S.stashList || [];
   if (!list.length) return '';
   const open = !S.collapsed.has('stash-panel');
-  return `<div class="st-sec"><button class="st-h${open ? '' : ' collapsed'}" data-st-fold><span class="chev">${icon('chev-down')}</span>${icon('archive')}<b>스태시</b><span class="cnt">${list.length}</span><span class="st-hint">임시 보관한 변경</span></button>
+  return `<div class="st-sec"><button class="st-h${open ? '' : ' collapsed'}" data-st-fold><span class="chev">${icon('chev-down')}</span>${icon('archive')}<b>스태시</b><span class="cnt">${list.length}</span><span class="st-hint">임시 보관한 변경</span><span class="st-clear" data-st-clear title="스태시 전체 삭제 — git stash clear">${icon('trash')} 전체 삭제</span></button>
     ${open ? list.map((st) => `<div class="st-it${S.detail?.stash?.index === st.index ? ' selected' : ''}" data-st="${st.index}" title="${esc(st.message)}\n눌러서 내용 미리보기">
       <div class="st-tx"><div class="st-t">${escN(st.title || '(메시지 없음)')}</div><div class="st-d">${icon('branch')}${escN(st.branch || '?')} · ${relDate(st.time)}</div></div>
       <div class="st-b"><button class="btn sm" data-st-act="stashApply" data-i="${st.index}" title="적용 (스태시는 남김) — git stash apply">적용</button><button class="btn sm primary" data-st-act="stashPop" data-i="${st.index}" title="꺼내기 (적용 후 삭제) — git stash pop">꺼내기</button><button class="ib" data-st-act="stashDrop" data-i="${st.index}" title="삭제 — git stash drop">${icon('trash')}</button></div></div>`).join('') : ''}</div>`;
@@ -739,6 +739,30 @@ async function openStash(index) {
     S.detail = { stash: st, sha: st.sha, parents: [st.base], files: st.files };
     closeDiff(); renderRows(); renderDetail();
   } catch (e) { toast(e.message, 'err'); loadRepo(S.repo, { keep: true }); }
+}
+async function stashWithMessage() {
+  const r = await modal({ title: '스태시에 보관', text: `커밋 안 한 변경 ${S.status.length}개를 임시로 치워둡니다. 나중에 꺼낼 수 있어요.`, input: '메모 (선택)', optional: true, ok: '보관' });
+  if (r) run('stash', { untracked: P.stashUntracked, message: r.raw || '' }, { label: '스태시' });
+}
+function discardAll() {
+  const fresh = S.status.filter((f) => f.status === '?').length;
+  confirmRun('모든 변경 버리기', `커밋 안 한 변경 ${S.status.length}개를 버립니다.\ngit reset --hard HEAD && git clean -fd\n\n수정한 파일은 직후에 [되돌리기] 로 되살릴 수 있어요.${fresh ? `\n⚠ 새로 만든 파일 ${fresh}개는 삭제되며 되살릴 수 없습니다.` : ''}`, 'discardAll', {}, '변경 버리기');
+}
+function discardFile(f) {
+  const isNew = f.status === '?';
+  confirmRun('이 파일 변경 버리기', `${f.path}\n\n${isNew ? '⚠ 새로 만든 파일이라 삭제되며 되살릴 수 없습니다.' : '마지막 커밋 상태로 되돌립니다. 직후에 [되돌리기] 로 되살릴 수 있어요.'}`, 'discardFile', { path: f.path, untracked: isNew }, '파일 변경 버리기');
+}
+function clearStashes() {
+  confirmRun('스태시 전체 삭제', `스태시 ${S.stashes}개를 모두 버립니다.\ngit stash clear\n\n되돌릴 수 없어요.`, 'stashClear', {}, '스태시 전체 삭제');
+}
+function wipMenu(x, y) {
+  showMenu([
+    { head: `커밋 안 한 변경 ${S.status.length}개` },
+    { label: '스태시에 보관…', hint: 'stash push', icon: 'archive', run: stashWithMessage },
+    { label: '바로 스태시', hint: 'stash push -u', icon: 'archive', run: ACT.stash },
+    '-',
+    { label: '모든 변경 버리기', hint: 'reset --hard · clean', icon: 'trash', danger: true, run: discardAll },
+  ], x, y);
 }
 function stashAction(action, index) {
   const st = (S.stashList || []).find((x) => x.index === index);
@@ -766,7 +790,8 @@ function renderDetail() {
   if (d.wip) {
     const staged = S.status.filter((f) => f.staged), rest = S.status.filter((f) => !f.staged);
     S.detailFiles = [...staged, ...rest];
-    el.innerHTML = `<div class="d-head"><div class="d-meta"><span class="badge">작업 중</span>${esc(S.info?.branch || 'detached')}</div><h2 class="d-subject">커밋 안 한 변경사항</h2>${ID.data?.effective?.email ? `<div class="d-as">커밋하면 <b>${escN(ID.data.effective.name)}</b> &lt;${esc(ID.data.effective.email)}&gt; 로 기록됩니다</div>` : ''}</div>
+    el.innerHTML = `<div class="d-head"><div class="d-meta"><span class="badge">작업 중</span>${esc(S.info?.branch || 'detached')}</div><h2 class="d-subject">커밋 안 한 변경사항</h2>${ID.data?.effective?.email ? `<div class="d-as">커밋하면 <b>${escN(ID.data.effective.name)}</b> &lt;${esc(ID.data.effective.email)}&gt; 로 기록됩니다</div>` : ''}
+      <div class="st-actions"><button class="btn sm" data-wip="stash">${icon('archive')} 스태시에 보관</button><button class="btn sm" data-wip="discard">${icon('trash')} 모두 버리기</button></div></div>
       ${statsHTML(S.status)}
       ${staged.length ? `<div class="wip-sec" title="git add 된 파일 — 다음 커밋에 들어갑니다">스테이징됨 · ${staged.length}</div>${fileListHTML(staged, 0)}` : ''}
       ${rest.length ? `<div class="wip-sec" title="아직 git add 하지 않은 변경 / 새 파일">스테이징 안 됨 · ${rest.length}</div>${fileListHTML(rest, staged.length)}` : ''}
@@ -1215,6 +1240,8 @@ async function toolbarMenu(kind, btn) {
           { label: '삭제', hint: 'stash drop', icon: 'trash', danger: true, run: () => confirmRun('스태시 삭제', `${st.message}\n\n이 스태시를 버립니다. 되돌릴 수 없어요.`, 'stashDrop', { index: st.index }, '스태시 삭제') },
         ],
       })),
+      '-',
+      { label: `스태시 전체 삭제 (${stashes.length}개)`, hint: 'stash clear', icon: 'trash', danger: true, run: clearStashes },
     ], r.left, r.bottom + 4);
   }
 }
@@ -1394,7 +1421,7 @@ function closeModal(v = null) {
   const r = modalResolve; modalResolve = null; r?.(v);
 }
 /** @param {ModalOptions} opts @returns {Promise<null | { value?: string, raw?: string, text?: string, checked?: boolean }>} */
-function modal({ title, text, input, inputType = 'text', inputValue = '', textarea, textareaValue = '', checkbox, ok = '확인', danger, wide, html }) {
+function modal({ title, text, input, inputType = 'text', inputValue = '', textarea, textareaValue = '', checkbox, ok = '확인', danger, wide, html, optional }) {
   closeModal();
   return new Promise((resolve) => {
     modalResolve = resolve;
@@ -1407,7 +1434,7 @@ function modal({ title, text, input, inputType = 'text', inputValue = '', textar
       <div class="btns">${ok ? `<button class="btn" id="m-cancel">취소</button><button class="btn ${danger ? 'danger' : 'primary'}" id="m-ok">${esc(ok)}</button>` : '<button class="btn" id="m-cancel">닫기</button>'}</div></div>`;
     const submit = () => {
       const v = { value: $('#m-in')?.value.trim(), raw: $('#m-in')?.value, text: $('#m-ta')?.value.trim(), checked: $('#m-cb')?.checked };
-      if (input && inputType !== 'password' && !v.value) return $('#m-in').focus();
+      if (input && inputType !== 'password' && !optional && !v.value) return $('#m-in').focus();
       closeModal(v);
     };
     $('#m-cancel').onclick = () => closeModal(null);
@@ -2109,7 +2136,8 @@ function bind() {
   rows.addEventListener('contextmenu', (e) => {
     const r = e.target.closest('.row'); if (!r) return;
     e.preventDefault();
-    const c = rowAt(+r.dataset.v); if (c.wip) return;
+    const c = rowAt(+r.dataset.v);
+    if (c.wip) { selectCommit('WIP', { scroll: false }); return wipMenu(e.clientX, e.clientY); }
     selectCommit(c.sha, { scroll: false });
     const p = e.target.closest('[data-ref]');
     let ref = p ? findRef(p.dataset.ref) : null;
@@ -2117,6 +2145,8 @@ function bind() {
     showMenu(commitMenu(c, ref), e.clientX, e.clientY);
   });
   $('#detail').addEventListener('click', (e) => {
+    const wb = e.target.closest('[data-wip]'); if (wb) return wb.dataset.wip === 'stash' ? stashWithMessage() : discardAll();
+    if (e.target.closest('[data-st-clear]')) { e.stopPropagation(); return clearStashes(); }
     const sa = e.target.closest('[data-st-act]'); if (sa) { e.stopPropagation(); return stashAction(sa.dataset.stAct, +sa.dataset.i); }
     if (e.target.closest('[data-st-close]')) { S.detail = null; closeDiff(); return renderDetail(); }
     if (e.target.closest('[data-st-fold]')) { S.collapsed.has('stash-panel') ? S.collapsed.delete('stash-panel') : S.collapsed.add('stash-panel'); LS.set('collapsed', [...S.collapsed]); return renderDetail(); }
@@ -2236,6 +2266,7 @@ function bind() {
     showMenu([
       { head: file.path },
       { label: '변경 내용 / 미리보기', run: () => openDiff(+f.dataset.fi) },
+      S.detail?.wip ? { label: '이 파일 변경 버리기', hint: file.status === '?' ? 'clean' : 'checkout --', icon: 'trash', danger: true, run: () => discardFile(file) } : null,
       { label: '이 파일의 기록 보기', hint: 'log -- 파일', tip: '이 파일을 바꾼 커밋만 그래프에서 강조합니다', run: () => fileHistory(file.path) },
       '-',
       { label: '기본 앱으로 열기', run: () => openExternal(file) },
@@ -2439,6 +2470,7 @@ function undoFor(action, args, b) {
     case 'branch': return () => back([...(args.checkout ? [backTo()] : []), ['deleteBranch', { name: args.name, force: true }]], '브랜치 생성');
     case 'tag': return () => back([['deleteTag', { name: args.name }]], '태그 생성');
     case 'stash': return () => back([['pop', {}]], '스태시');
+    case 'discardAll': case 'discardFile': return b.dirty && !args.untracked ? () => back([['restoreDiscard', {}]], '변경 버리기') : null;
     default: return null;
   }
 }

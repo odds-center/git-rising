@@ -22,6 +22,7 @@ type ModalOptions = {
   title: string; text?: string; html?: string; ok?: string | null; danger?: boolean; wide?: boolean;
   input?: string; inputType?: string; inputValue?: string; textarea?: string | null; textareaValue?: string;
   checkbox?: { label: string; checked: boolean } | null;
+  optional?: boolean;
 };
 type RunOptions = { label?: string; quiet?: boolean; noUndo?: boolean; force?: boolean };
 interface Window { grRefresh?: () => unknown }

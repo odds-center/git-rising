@@ -578,6 +578,7 @@ async function apiClone(_q, body) {
   return { path: target };
 }
 
+const lastDiscard = new Map(); // repo → stash-like commit holding the tracked changes we just threw away
 const stashIndex = (i) => { const n = parseInt(i); if (!(n >= 0 && n < 1000)) throw httpError(400, 'bad stash index'); return n; };
 async function listStashes(repo) {
   const out = await git(repo, ['stash', 'list', '--format=%gd%x00%ct%x00%gs%x00%H']).catch(() => '');
@@ -768,6 +769,37 @@ const actions = {
     const up = await git(repo, ['rev-parse', '--abbrev-ref', '@{u}']).then(() => true, () => false);
     const extra = force ? ['--force-with-lease'] : []; // refuses if someone else pushed in the meantime
     return up ? git(repo, ['push', ...extra]) : git(repo, ['push', '-u', ...extra, 'origin', br]);
+  },
+  async stashClear(repo) {
+    const n = (await listStashes(repo)).length;
+    await git(repo, ['stash', 'clear']);
+    return `스태시 ${n}개를 모두 삭제했어요`;
+  },
+  // Throw away uncommitted work. Tracked changes are first captured in an unreferenced stash commit
+  // (not added to the stash list) so the toast's undo can bring them back; new files cannot be restored.
+  async discardAll(repo) {
+    const keep = (await git(repo, ['stash', 'create']).catch(() => '')).trim();
+    if (keep) lastDiscard.set(repo, keep); else lastDiscard.delete(repo);
+    if (await hasHead(repo)) await git(repo, ['reset', '--hard', 'HEAD']);
+    await git(repo, ['clean', '-fd']);
+    return '커밋 안 한 변경을 모두 버렸어요';
+  },
+  async discardFile(repo, { path: p, untracked }) {
+    const full = insideRepo(repo, p);
+    const rel = path.relative(repo, full);
+    if (untracked) return git(repo, ['clean', '-fd', '--', rel]);
+    const keep = (await git(repo, ['stash', 'create']).catch(() => '')).trim();
+    if (keep) lastDiscard.set(repo, keep);
+    await git(repo, ['reset', '-q', 'HEAD', '--', rel]).catch(() => {});
+    const inHead = await git(repo, ['cat-file', '-e', `HEAD:${rel.split(path.sep).join('/')}`]).then(() => true, () => false);
+    return inHead ? git(repo, ['checkout', 'HEAD', '--', rel]) : git(repo, ['clean', '-f', '--', rel]);
+  },
+  async restoreDiscard(repo) {
+    const sha = lastDiscard.get(repo);
+    if (!sha) throw httpError(409, '되살릴 변경이 없어요');
+    await git(repo, ['stash', 'apply', sha]);
+    lastDiscard.delete(repo);
+    return '버렸던 변경을 되살렸어요';
   },
   async stashApply(repo, { index }) { return git(repo, ['stash', 'apply', `stash@{${stashIndex(index)}}`]); },
   async stashPop(repo, { index }) { return git(repo, ['stash', 'pop', `stash@{${stashIndex(index)}}`]); },
