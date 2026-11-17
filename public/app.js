@@ -43,9 +43,10 @@ const COL_MIN = { ref: 60, graph: 28, author: 48, date: 48, sha: 40 };
 const CW = Object.assign({}, COL_DEF, LS.get('cols', {}));
 // Graph palettes. On dark backgrounds saturated colours glare, so the dark themes use softer tones.
 const LANES = {
-  light: ['#4f74e8', '#9a5fe6', '#d94d9c', '#e8663f', '#c9921a', '#22a06b', '#1b9bb3', '#7a6cf0', '#d1486b', '#3f8fd9'],
-  soft: ['#8aa4ec', '#b79cf0', '#e09ac6', '#e8a48e', '#dcc07a', '#7fcaa2', '#74c0d0', '#a9a0ee', '#e0919f', '#88b8e8'],
-  deep: ['#6b8cff', '#b07aff', '#ef62b0', '#ff7b5c', '#f2b740', '#3ec486', '#2db7cc', '#9183ff', '#e8577a', '#62aef7'],
+  // ordered so that neighbouring lanes never share a hue: blue, orange, green, pink, cyan, yellow, violet, red, sky, lime
+  light: ['#3f6fe0', '#e0661f', '#1f9d63', '#d6409a', '#1295ad', '#b9860f', '#8a55e6', '#d64560', '#2f8fd6', '#6a9a1f'],
+  soft: ['#7da2f5', '#f0a070', '#72cf9e', '#ea8fc4', '#63c6d8', '#e3c467', '#b596f2', '#ee8a98', '#7fbdf0', '#a9cf74'],
+  deep: ['#6b8cff', '#ff8a4c', '#3ec486', '#ef62b0', '#2db7cc', '#f2b740', '#b07aff', '#f0566f', '#62aef7', '#9bd14a'],
 };
 let COLORS = LANES.soft;
 const laneColor = (i) => COLORS[i % COLORS.length];
@@ -549,27 +550,32 @@ function drawGraph(first, last) {
   const bg = S.theme.bg;
   g.save();
   g.beginPath(); g.rect(x0, 0, S.graphW, h); g.clip();
-  g.lineWidth = 1.6; g.lineCap = 'round';
+  const LW = P.avatars ? 2.2 : 2;
+  g.lineWidth = LW; g.lineCap = 'round'; g.lineJoin = 'round';
   const off = S.off;
-  // edges between commit rows
+  // edges between commit rows — pass 0: straight segments, pass 1: bends (drawn over a background-coloured
+  // halo, so where a merge line crosses another lane the two stay visually separate)
   const cFirst = Math.max(0, first - off - 1), cLast = Math.min(S.commits.length - 1, last - off);
-  for (let r = cFirst; r <= cLast; r++) {
-    const row = S.L.rows[r];
-    const isLast = r === S.commits.length - 1;
-    const es = isLast ? S.L.tail() : row.edges;
-    const y1 = Y(r + off), y2 = y1 + ROW;
-    for (const e of es) {
-      const a = X(e.x1), b = X(e.x2);
-      g.strokeStyle = laneColor(e.lane);
-      g.beginPath(); g.moveTo(a, y1);
-      if (a === b) g.lineTo(b, y2);
-      else {
-        const rad = Math.min(6, Math.abs(b - a) / 2), sx = Math.sign(b - a);
-        if (e.top && !e.bot) { g.lineTo(b - sx * rad, y1); g.quadraticCurveTo(b, y1, b, y1 + rad); g.lineTo(b, y2); }
-        else if (e.bot && !e.top) { g.lineTo(a, y2 - rad); g.quadraticCurveTo(a, y2, a + sx * rad, y2); g.lineTo(b, y2); }
-        else { const my = (y1 + y2) / 2; g.bezierCurveTo(a, my, b, my, b, y2); }
+  for (let pass = 0; pass < 2; pass++) {
+    for (let r = cFirst; r <= cLast; r++) {
+      const row = S.L.rows[r];
+      const es = r === S.commits.length - 1 ? S.L.tail() : row.edges;
+      const y1 = Y(r + off), y2 = y1 + ROW;
+      for (const e of es) {
+        const a = X(e.x1), b = X(e.x2);
+        if ((a === b) !== (pass === 0)) continue;
+        g.beginPath(); g.moveTo(a, y1);
+        if (a === b) g.lineTo(b, y2);
+        else {
+          const rad = Math.min(8, Math.abs(b - a) / 2, ROW / 2), sx = Math.sign(b - a);
+          if (e.top && !e.bot) { g.lineTo(b - sx * rad, y1); g.quadraticCurveTo(b, y1, b, y1 + rad); g.lineTo(b, y2); }
+          else if (e.bot && !e.top) { g.lineTo(a, y2 - rad); g.quadraticCurveTo(a, y2, a + sx * rad, y2); g.lineTo(b, y2); }
+          else { const my = (y1 + y2) / 2; g.bezierCurveTo(a, my, b, my, b, y2); }
+          g.strokeStyle = bg; g.lineWidth = LW + 3; g.stroke(); g.lineWidth = LW;
+        }
+        g.strokeStyle = laneColor(e.lane);
+        g.stroke();
       }
-      g.stroke();
     }
   }
   // WIP: dashed link to HEAD
@@ -586,44 +592,47 @@ function drawGraph(first, last) {
     const x = X(col), y = Y(v), color = laneColor(col);
     if (c.wip) {
       g.setLineDash([2, 2]); g.strokeStyle = color; g.fillStyle = bg; g.lineWidth = 1.5;
-      g.beginPath(); g.arc(x, y, NODE_R + 0.5, 0, 7); g.fill(); g.stroke(); g.setLineDash([]); g.lineWidth = 1.6;
+      g.beginPath(); g.arc(x, y, NODE_R + 0.5, 0, 7); g.fill(); g.stroke(); g.setLineDash([]); g.lineWidth = LW;
       continue;
     }
     const merge = c.parents.length > 1;
     if (P.avatars && !merge) {
       const r = NODE_R;
       const peb = (rr) => { g.beginPath(); g.roundRect(x - rr, y - rr, rr * 2, rr * 2, rr * 0.72); };
-      g.fillStyle = color; peb(r + 1.5); g.fill();
+      g.fillStyle = bg; peb(r + 3.2); g.fill();      // gap between node and lines
+      g.fillStyle = color; peb(r + 2); g.fill();     // lane-coloured ring
       const photo = avatarImg(c);
       if (photo) {
         g.save(); peb(r - 0.3); g.clip(); g.drawImage(photo, x - r, y - r, r * 2, r * 2); g.restore();
         if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.4; peb(r + 3); g.stroke(); }
-        g.lineWidth = 1.6;
+        g.lineWidth = LW;
         continue;
       }
       g.fillStyle = avColor(c.email); peb(r - 0.3); g.fill();
       g.fillStyle = '#fff'; g.font = `600 ${Math.round(r * 0.95)}px ${getComputedStyle(document.body).fontFamily}`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(initials(c.author), x, y + 0.5);
       if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.4; peb(r + 3); g.stroke(); }
-      g.lineWidth = 1.6;
+      g.lineWidth = LW;
       continue;
     }
-    g.fillStyle = merge ? bg : color; g.strokeStyle = color; g.lineWidth = 1.8;
-    g.beginPath(); g.arc(x, y, merge ? NODE_R - 0.5 : NODE_R, 0, 7); g.fill(); if (merge) g.stroke();
-    if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.4; g.beginPath(); g.arc(x, y, NODE_R + 3, 0, 7); g.stroke(); }
-    g.lineWidth = 1.6;
+    const nr = P.avatars ? 5 : NODE_R + 0.5; // merge commits / plain dots
+    g.fillStyle = bg; g.beginPath(); g.arc(x, y, nr + 2, 0, 7); g.fill();
+    g.fillStyle = merge ? bg : color; g.strokeStyle = color; g.lineWidth = 2.2;
+    g.beginPath(); g.arc(x, y, merge ? nr - 0.4 : nr, 0, 7); g.fill(); if (merge) g.stroke();
+    if (c.sha === S.info?.head) { g.strokeStyle = S.theme.text; g.lineWidth = 1.4; g.beginPath(); g.arc(x, y, nr + 3, 0, 7); g.stroke(); }
+    g.lineWidth = LW;
   }
   g.restore();
   // ref connector
-  g.globalAlpha = 0.45; g.lineWidth = 1.2;
+  g.globalAlpha = 0.6; g.lineWidth = 1.2; g.setLineDash([2, 3]);
   for (let v = first; v <= last; v++) {
     const c = rowAt(v);
     if (c.wip || !S.refsBySha.has(c.sha)) continue;
     const col = S.L.rows[v - off].col;
     g.strokeStyle = laneColor(col);
-    g.beginPath(); g.moveTo(x0 - 2, Y(v)); g.lineTo(X(col) - NODE_R - 2, Y(v)); g.stroke();
+    g.beginPath(); g.moveTo(x0 - 2, Y(v)); g.lineTo(X(col) - NODE_R - 5, Y(v)); g.stroke();
   }
-  g.globalAlpha = 1;
+  g.globalAlpha = 1; g.setLineDash([]);
 }
 
 // ================================================================ popover: every branch / tag on a commit
@@ -862,7 +871,7 @@ function renderDiffHead(f, textish, canPreview, mode) {
   const h = $('#diff-head');
   const [fic, fcol] = fileIcon(f.path);
   const modes = [...(textish ? [['unified', '변경', '바뀐 줄만 한 단으로 (diff)'], ['split', '좌우 비교', '왼쪽 이전 · 오른쪽 이후'], ['full', '파일 전체', '이 커밋 시점의 파일 전체 (바뀐 줄 표시)']] : []), ...(canPreview ? [['preview', '미리보기', '렌더링된 모습']] : [])];
-  h.innerHTML = `<button id="diff-close" class="ib" title="닫기 (Esc)">${icon('x')}</button><span class="fic" style="color:${fcol}">${icon(fic)}</span><span id="diff-title">${escN((f.oldPath ? f.oldPath + ' → ' : '') + f.path)}</span><span class="grow"></span>
+  h.innerHTML = `<button id="diff-close" class="ib" title="닫기 (Esc)">${icon('x')}</button><span class="fic" style="color:${fcol}">${icon(fic)}</span><span id="diff-title">${escN((f.oldPath ? f.oldPath + ' → ' : '') + f.path)}</span><span id="word-count" hidden></span><span class="grow"></span>
     ${modes.length > 1 ? `<div class="seg" style="margin:0">${modes.map(([m, l, t]) => `<button data-mode="${m}" title="${t}" class="${mode === m ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
     ${textish ? '<label class="chk" title="긴 줄을 화면 폭에 맞춰 줄바꿈"><input type="checkbox" id="diff-wrap"> 줄바꿈</label>' : ''}
     <button class="ib" id="diff-open" title="기본 앱으로 열기">${icon('external')}</button>`;
@@ -895,6 +904,7 @@ async function getPatch(f) {
 }
 async function showMode(mode) {
   const f = S.diffFile, body = $('#diff-body');
+  clearWordMarks();
   body.className = LS.get('wrap', false) && mode !== 'preview' ? 'wrap' : '';
   body.innerHTML = '<div class="diff-note">불러오는 중…</div>';
   try {
@@ -1130,7 +1140,59 @@ async function renderPreview(box, url, f, side) {
   }
 }
 
+// ---- select a word in the code → every other occurrence is marked, with ticks on the right edge
+const WORD = { last: '' };
+function clearWordMarks() {
+  if (!WORD.last) return;
+  WORD.last = '';
+  window.CSS?.highlights?.delete('same-word');
+  const r = $('#diff-ruler'); if (r) r.innerHTML = '';
+  const c = $('#word-count'); if (c) c.hidden = true;
+}
+function markSameWord() {
+  const body = $('#diff-body');
+  const sel = getSelection();
+  if ($('#diff-view').hidden || !sel || sel.isCollapsed || !sel.anchorNode || !body.contains(sel.anchorNode)) return clearWordMarks();
+  const raw = sel.toString();
+  const needle = raw.trim();
+  if (raw.includes('\n') || needle.length < 2 || needle.length > 80) return clearWordMarks();
+  if (needle === WORD.last) return;
+  WORD.last = needle;
+  const ranges = [], lines = [];
+  for (const tx of body.querySelectorAll('.tx')) {
+    const text = tx.textContent;
+    let at = text.indexOf(needle);
+    if (at === -1) continue;
+    // syntax colouring splits a line into several text nodes: map character offsets back onto them
+    const nodes = []; let pos = 0;
+    const w = document.createTreeWalker(tx, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) { nodes.push([n, pos]); pos += n.nodeValue.length; }
+    /** @returns {[Node, number]} */
+    const locate = (o) => { for (let k = nodes.length - 1; k >= 0; k--) if (nodes[k][1] <= o) return [nodes[k][0], o - nodes[k][1]]; return [nodes[0][0], 0]; };
+    while (at !== -1 && ranges.length < 4000) {
+      const r = new Range();
+      const [sn, so] = locate(at), [en, eo] = locate(at + needle.length);
+      r.setStart(sn, so); r.setEnd(en, eo);
+      ranges.push(r);
+      at = text.indexOf(needle, at + needle.length);
+    }
+    lines.push(tx.parentElement);
+  }
+  if (window.CSS?.highlights && window.Highlight) CSS.highlights.set('same-word', new Highlight(...ranges));
+  // ticks: where in the file the matches are (click to jump)
+  const ruler = $('#diff-ruler');
+  const seen = new Set();
+  ruler.innerHTML = lines.map((el) => {
+    const sc = el.closest('.pane') || body;
+    const y = Math.round((el.offsetTop / Math.max(1, sc.scrollHeight)) * 1000) / 10;
+    if (seen.has(y)) return ''; seen.add(y);
+    return `<i style="top:${y}%" data-y="${el.offsetTop}"></i>`;
+  }).join('');
+  const c = $('#word-count');
+  if (c) { c.hidden = false; c.textContent = `같은 단어 ${ranges.length}곳`; c.title = needle; }
+}
 function closeDiff() {
+  clearWordMarks();
   $('#diff-view').hidden = true;
   $('#diff-body').innerHTML = '';
   document.querySelectorAll('#detail .file.selected').forEach((e) => e.classList.remove('selected'));
@@ -2264,6 +2326,11 @@ function bind() {
     if (r) post('update', {}, { action: 'install' });
   };
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+  document.addEventListener('selectionchange', debounce(markSameWord, 140));
+  $('#diff-ruler').addEventListener('click', (e) => {
+    const t = e.target.closest('i'); if (!t) return;
+    for (const sc of [...document.querySelectorAll('#diff-body .pane'), $('#diff-body')]) sc.scrollTop = Math.max(0, +t.dataset.y - sc.clientHeight / 3);
+  });
   // drop a folder anywhere → open it as a tab
   document.addEventListener('dragover', (e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); document.body.classList.add('dropping'); } });
   document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
