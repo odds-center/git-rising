@@ -402,6 +402,21 @@ async function apiCommit(q) {
   };
 }
 
+// Two arbitrary commits side by side (⌘-click in the graph).
+async function apiCompare(q) {
+  const repo = await resolveRepo(q.repo);
+  const a = checkSha(q.a), b = checkSha(q.b);
+  const [ns, nums, lr] = await Promise.all([
+    git(repo, ['diff', '-M', '--name-status', '-z', a, b]),
+    git(repo, ['diff', '-M', '--numstat', '-z', a, b]),
+    git(repo, ['rev-list', '--left-right', '--count', `${a}...${b}`]).catch(() => '0 0'),
+  ]);
+  const stats = parseNumstatZ(nums);
+  const files = parseNameStatusZ(ns).map((f) => ({ ...f, ...(stats.get(f.path) || {}) }));
+  const [onlyA, onlyB] = lr.trim().split(/\s+/).map(Number);
+  return { a, b, files, onlyA, onlyB };
+}
+
 async function apiStatus(q) {
   const repo = await resolveRepo(q.repo);
   const out = await git(repo, ['status', '--porcelain=v1', '-z', '--untracked-files=normal', '--ignore-submodules=dirty']);
@@ -434,8 +449,12 @@ async function apiDiff(q) {
   const paths = q.oldPath ? [q.oldPath, file] : [file];
   let out;
   if (q.sha === 'WIP') {
-    if (q.untracked === '1') {
+    if (q.side === 'staged') {
+      out = await git(repo, ['diff', '--cached', '-M', '--', ...paths]);
+    } else if (q.untracked === '1') {
       out = await git(repo, ['diff', '--no-index', '--', '/dev/null', file], { okCodes: [0, 1] });
+    } else if (q.side === 'unstaged') {
+      out = await git(repo, ['diff', '--', file]);
     } else if (await hasHead(repo)) {
       out = await git(repo, ['diff', '-M', 'HEAD', '--', ...paths]);
     } else {
@@ -800,6 +819,28 @@ const actions = {
     catch (e) { out.state = 'blocked'; out.error = e.message.split('\n').slice(0, 3).join(' '); } // local edits overlap incoming files
     return out;
   },
+  // ---- staging & committing (the WIP panel) ----
+  async stage(repo, { paths }) {
+    return git(repo, ['add', '-A', '--', ...relPaths(repo, paths)]);
+  },
+  async unstage(repo, { paths }) {
+    const ps = relPaths(repo, paths);
+    return (await hasHead(repo)) ? git(repo, ['reset', '-q', 'HEAD', '--', ...ps], { okCodes: [0, 1] }) : git(repo, ['rm', '-r', '-q', '--cached', '--', ...ps]);
+  },
+  async stageAll(repo) {
+    return git(repo, ['add', '-A']);
+  },
+  async unstageAll(repo) {
+    return (await hasHead(repo)) ? git(repo, ['reset', '-q'], { okCodes: [0, 1] }) : git(repo, ['rm', '-r', '-q', '--cached', '.']);
+  },
+  async commit(repo, { message, amend, all }) {
+    const msg = String(message || '').replace(/\s+$/, '');
+    if (!amend && !msg.trim()) throw httpError(400, '커밋 메시지를 적어주세요');
+    if (all) await git(repo, ['add', '-A']);
+    if (!amend && !(await git(repo, ['diff', '--cached', '--name-only'])).trim()) throw httpError(409, '커밋할 변경이 없어요 (스테이징된 파일 없음)');
+    await git(repo, ['commit', ...(amend ? ['--amend'] : []), ...(msg.trim() ? ['-m', msg] : ['--no-edit'])], { timeout: 120000 });
+    return (await git(repo, ['log', '-1', '--format=%h %s'])).trim();
+  },
   async stashClear(repo) {
     const n = (await listStashes(repo)).length;
     await git(repo, ['stash', 'clear']);
@@ -920,6 +961,10 @@ function gitBuf(repo, args) {
     execFile('git', ['-C', repo, ...args], { encoding: 'buffer', maxBuffer: 1024 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }, (err, out, errOut) =>
       err ? reject(httpError(404, String(errOut || err.message).trim())) : resolve(out));
   });
+}
+function relPaths(repo, paths) {
+  if (!Array.isArray(paths) || !paths.length) throw httpError(400, 'paths is required');
+  return paths.map((p) => path.relative(repo, insideRepo(repo, String(p))) || '.');
 }
 function insideRepo(repo, p) {
   const full = path.resolve(repo, p);
@@ -1677,6 +1722,7 @@ const routes = {
   '/api/log': apiLog,
   '/api/refs': apiRefs,
   '/api/commit': apiCommit,
+  '/api/compare': apiCompare,
   '/api/status': apiStatus,
   '/api/diff': apiDiff,
   '/api/fingerprint': apiFingerprint,

@@ -347,7 +347,8 @@ async function loadRepo(repo, { keep = false, open = false, manual = false } = {
     renderSync(); if (switching) setTimeout(() => autoSyncTick(), 1500);
     if (S.selected && vIndex(S.selected) < 0) S.selected = null;
     if (S.detail?.stash && !S.stashList.some((x) => x.sha === S.detail.stash.sha)) { S.detail = null; closeDiff(); }
-    if (S.selected) selectCommit(S.selected, { scroll: false, force: true }); else renderDetail();
+    if (S.detail?.compare) { if (vIndex(S.detail.compare.a) < 0) { S.detail = null; renderDetail(); } }
+    else if (S.selected) selectCommit(S.selected, { scroll: false, force: true }); else renderDetail();
     $('#empty').hidden = true;
   } catch (e) {
     if (S.repo === repo) {
@@ -529,6 +530,7 @@ function paint() {
     }
     const c = rowAt(v);
     el.classList.toggle('selected', c.sha === S.selected);
+    el.classList.toggle('cmp', !!S.detail?.compare && c.sha === S.detail.compare.a);
     el.classList.toggle('head', !c.wip && c.sha === S.info?.head);
     el.classList.toggle('match', !!S.find && S.findSet.has(c.sha));
     el.classList.toggle('dim', !!S.find && S.findShas.length > 0 && !S.findSet.has(c.sha));
@@ -713,7 +715,7 @@ const loadDetail = debounce(async (sha) => {
 }, 40);
 
 async function selectCommit(sha, { scroll = true, force = false } = {}) {
-  if (!force && sha === S.selected && S.detail) return;
+  if (!force && sha === S.selected && S.detail && !S.detail.compare) return;
   if (vIndex(sha) < 0 && !(await ensureLoaded(sha))) { toast('불러온 범위에 없는 커밋입니다'); return; }
   S.selected = sha;
   if (scroll) scrollToRow(vIndex(sha));
@@ -740,6 +742,7 @@ const EXT_KIND = (() => {
   'pptx ppt key hwp hwpx doc pages zip psd ai sketch fig heic tiff tif'.split(' ').forEach((e) => (m[e] = 'external'));
   return m;
 })();
+const fkey = (f) => (f ? (f.side || '') + ':' + f.path : '');
 const kindOf = (p) => EXT_KIND[(p.split('.').pop() || '').toLowerCase()] || 'text';
 const KIND_LABEL = { image: '이미지', pdf: 'PDF', video: '영상', audio: '오디오', docx: 'Word', sheet: '시트', external: '문서' };
 
@@ -752,7 +755,7 @@ function fileListHTML(files, startIdx = 0) {
     const n = f.add != null ? `<span class="n"><span class="a">+${f.add}</span> <span class="d">−${f.del}</span></span>` : KIND_LABEL[k] ? `<span class="kind">${KIND_LABEL[k]}</span>` : '';
     const p = short ? `<bdi>${escN(base)}</bdi>` : `<bdi><span class="dir">${escN(dir)}</span>${escN(base)}</bdi>`;
     const [fic, fcol] = fileIcon(f.path);
-    return `<div class="file${!$('#diff-view').hidden && S.diffFile === f ? ' selected' : ''}" data-fi="${i + startIdx}" title="${esc(f.oldPath ? f.oldPath + ' → ' + f.path : f.path)}"><span class="st st-${esc(f.status)}">${sym[f.status] || f.status}</span><span class="fic" style="color:${fcol}">${icon(fic)}</span><span class="p">${p}</span>${n}</div>`;
+    return `<div class="file${!$('#diff-view').hidden && fkey(S.diffFile) === fkey(f) ? ' selected' : ''}" data-fi="${i + startIdx}" title="${esc(f.oldPath ? f.oldPath + ' → ' + f.path : f.path)}"><span class="st st-${esc(f.status)}">${sym[f.status] || f.status}</span><span class="fic" style="color:${fcol}">${icon(fic)}</span><span class="p">${p}</span>${n}${f.side ? `<button class="fbtn" data-stage="${f.side === 'staged' ? 'unstage' : 'stage'}" data-path="${esc(f.path)}" title="${f.side === 'staged' ? '스테이징 취소 — git reset' : '스테이징 — git add'}">${f.side === 'staged' ? '−' : '+'}</button>` : ''}</div>`;
   };
   if (S.fileView === 'tree') {
     const groups = new Map();
@@ -832,15 +835,16 @@ function renderDetail() {
       ${stashSectionHTML()}`;
     return;
   }
-  if (d.wip) {
-    const staged = S.status.filter((f) => f.staged), rest = S.status.filter((f) => !f.staged);
-    S.detailFiles = [...staged, ...rest];
-    el.innerHTML = `<div class="d-head"><div class="d-meta"><span class="badge">작업 중</span>${esc(S.info?.branch || 'detached')}</div><h2 class="d-subject">커밋 안 한 변경사항</h2>${ID.data?.effective?.email ? `<div class="d-as">커밋하면 <b>${escN(ID.data.effective.name)}</b> &lt;${esc(ID.data.effective.email)}&gt; 로 기록됩니다</div>` : ''}
-      <div class="st-actions"><button class="btn sm" data-wip="stash">${icon('archive')} 스태시에 보관</button><button class="btn sm" data-wip="discard">${icon('trash')} 모두 버리기</button></div></div>
-      ${statsHTML(S.status)}
-      ${staged.length ? `<div class="wip-sec" title="git add 된 파일 — 다음 커밋에 들어갑니다">스테이징됨 · ${staged.length}</div>${fileListHTML(staged, 0)}` : ''}
-      ${rest.length ? `<div class="wip-sec" title="아직 git add 하지 않은 변경 / 새 파일">스테이징 안 됨 · ${rest.length}</div>${fileListHTML(rest, staged.length)}` : ''}
-      ${stashSectionHTML()}`;
+  if (d.wip) { renderWip(el); return; }
+  if (d.compare) {
+    const c = d.compare, sub = (x) => escN(S.commits[S.index.get(x)]?.subject || '');
+    S.detailFiles = d.files;
+    el.innerHTML = `<div class="d-head"><div class="d-meta"><span class="badge">${icon('layers')} 두 커밋 비교</span><span class="grow"></span><button class="ib" data-cmp-close title="비교 닫기">${icon('x')}</button></div>
+      <div class="cmp-side"><span class="cmp-l">이전</span><a data-goto="${c.a}">${c.a.slice(0, 7)}</a><span class="cmp-s">${sub(c.a)}</span></div>
+      <div class="cmp-side"><span class="cmp-l">이후</span><a data-goto="${c.b}">${c.b.slice(0, 7)}</a><span class="cmp-s">${sub(c.b)}</span></div>
+      <div class="d-as">${c.onlyB ? `이후 쪽에만 있는 커밋 ${c.onlyB}개` : ''}${c.onlyA && c.onlyB ? ' · ' : ''}${c.onlyA ? `이전 쪽에만 있는 커밋 ${c.onlyA}개` : ''}${!c.onlyA && !c.onlyB ? '같은 커밋' : ''} · ⌘ 누른 채 다른 커밋을 누르면 대상 변경</div></div>
+      ${statsHTML(d.files)}
+      ${d.files.length ? fileListHTML(d.files) : '<div class="placeholder">두 커밋의 파일 내용이 같아요</div>'}`;
     return;
   }
   S.detailFiles = d.files;
@@ -862,6 +866,161 @@ function renderDetail() {
     ${statsHTML(d.files)}
     ${d.files.length ? fileListHTML(d.files) : '<div class="placeholder">변경된 파일 없음</div>'}
     ${stashSectionHTML()}`;
+}
+
+// ================================================================ WIP: stage · unstage · commit (GitKraken-style panel)
+const draft = () => (S.drafts ||= {})[S.repo] ||= { sum: '', body: '', amend: false, filled: '' };
+function wipLists() {
+  const staged = S.status.filter((f) => f.staged).map((f) => ({ ...f, side: 'staged' }));
+  const unstaged = S.status.filter((f) => f.unstaged).map((f) => ({ ...f, side: 'unstaged' }));
+  return { staged, unstaged };
+}
+function renderWip(el) {
+  const { staged, unstaged } = wipLists();
+  S.detailFiles = [...unstaged, ...staged];
+  const live = `<div class="d-head"><div class="d-meta"><span class="badge">작업 중</span>${icon('branch')} ${esc(S.info?.branch || 'detached')}</div><h2 class="d-subject">커밋 안 한 변경사항</h2>
+      <div class="st-actions"><button class="btn sm" data-wip="stash">${icon('archive')} 스태시에 보관</button><button class="btn sm" data-wip="discard">${icon('trash')} 모두 버리기</button></div></div>
+    <div class="wip-sec"><span>스테이징 안 됨 <b>${unstaged.length}</b></span>${unstaged.length ? `<button class="btn sm" data-stage-all="stageAll" title="git add -A">모두 스테이징</button>` : ''}</div>
+    ${unstaged.length ? fileListHTML(unstaged, 0) : '<div class="wip-empty">없음</div>'}
+    <div class="wip-sec"><span>스테이징됨 <b>${staged.length}</b></span>${staged.length ? `<button class="btn sm" data-stage-all="unstageAll" title="git reset">모두 내리기</button>` : ''}</div>
+    ${staged.length ? fileListHTML(staged, unstaged.length) : '<div class="wip-empty">파일의 + 를 누르거나 위에서 모두 스테이징</div>'}
+    ${stashSectionHTML()}`;
+  if (el.querySelector('#c-sum')) { el.querySelector('.wip-live').innerHTML = live; updateCommitBtn(); return; } // keep the message box (and its caret) while files change
+  const dr = draft();
+  el.innerHTML = `<div class="wip-wrap"><div class="wip-live">${live}</div>
+    <div class="cbox">
+      <div class="cb-top"><b>커밋</b>${ID.data?.effective?.email ? `<span class="cb-who" title="${esc(ID.data.effective.email)}">${escN(ID.data.effective.name)}</span>` : ''}<label class="chk" title="새 커밋 대신 직전 커밋에 합칩니다 — git commit --amend"><input type="checkbox" id="c-amend"${dr.amend ? ' checked' : ''}> 직전 커밋 고치기</label></div>
+      <div class="cb-sum"><input class="field" id="c-sum" placeholder="요약 (필수)" spellcheck="false" autocomplete="off"><span id="c-len"></span></div>
+      <textarea class="field" id="c-body" placeholder="설명 (선택)" spellcheck="false"></textarea>
+      <button class="btn primary" id="c-go"></button>
+    </div></div>`;
+  const sum = $('#c-sum'), body = $('#c-body');
+  sum.value = dr.sum; body.value = dr.body;
+  const sync = () => { dr.sum = sum.value; dr.body = body.value; updateCommitBtn(); };
+  sum.oninput = sync; body.oninput = sync;
+  const keys = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); doCommit(); } };
+  sum.onkeydown = (e) => { keys(e); if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); body.focus(); } };
+  body.onkeydown = keys;
+  $('#c-amend').onchange = async (e) => {
+    dr.amend = /** @type {HTMLInputElement} */ (e.target).checked;
+    if (dr.amend && !sum.value.trim() && S.info?.head) { // start from the previous message, like GitKraken
+      try {
+        const c = await api('commit', { repo: S.repo, sha: S.info.head });
+        const [s0, ...rest] = c.message.split('\n');
+        sum.value = s0; body.value = rest.join('\n').trim(); dr.filled = c.message;
+      } catch {}
+    } else if (!dr.amend && dr.filled && (sum.value + (body.value ? '\n\n' + body.value : '')).trim() === dr.filled.trim()) { sum.value = ''; body.value = ''; dr.filled = ''; }
+    sync();
+  };
+  updateCommitBtn();
+}
+function updateCommitBtn() {
+  const b = $('#c-go'); if (!b) return;
+  const dr = draft(), { staged, unstaged } = wipLists();
+  const len = dr.sum.length;
+  const lc = $('#c-len'); if (lc) { lc.textContent = len ? String(len) : ''; lc.className = len > 72 ? 'over' : ''; lc.title = len > 72 ? '요약은 72자 이하가 보기 좋아요' : ''; }
+  let label, off = false;
+  if (dr.amend) label = staged.length ? `직전 커밋 고치기 (파일 ${staged.length}개 추가)` : '직전 커밋 메시지 고치기';
+  else if (staged.length) label = `파일 ${staged.length}개 커밋`;
+  else if (unstaged.length) label = `변경 ${unstaged.length}개 모두 스테이징하고 커밋`;
+  else { label = '커밋할 변경 없음'; off = true; }
+  if (!dr.amend && !dr.sum.trim()) off = true;
+  b.innerHTML = `${icon('commit')} ${esc(label)} <kbd>⌘↵</kbd>`;
+  b.disabled = off;
+}
+async function doCommit() {
+  const dr = draft(), { staged, unstaged } = wipLists();
+  if (!dr.amend && !dr.sum.trim()) { toast('커밋 요약을 적어주세요', 'err'); $('#c-sum')?.focus(); return; }
+  if (!dr.amend && !staged.length && !unstaged.length) return;
+  const message = dr.sum.trim() + (dr.body.trim() ? '\n\n' + dr.body.trim() : '');
+  const ok = await run('commit', { message, amend: dr.amend, all: !dr.amend && !staged.length }, { label: dr.amend ? '직전 커밋 고치기' : '커밋' });
+  if (!ok) return;
+  S.drafts[S.repo] = { sum: '', body: '', amend: false, filled: '' };
+  S.selected = null; S.detail = null;
+  await loadRepo(S.repo, { keep: true });
+  if (S.info?.head) selectCommit(S.info.head, { force: true });
+}
+async function stageFiles(action, paths) {
+  const ok = await run(action, paths ? { paths } : {}, { quiet: true, noUndo: true });
+  if (ok) await loadRepo(S.repo, { keep: true });
+}
+
+// ================================================================ compare two commits (⌘-click)
+async function compareCommits(x, y) {
+  if (!x || !y || x === y || x === 'WIP' || y === 'WIP') return;
+  const [a, b] = vIndex(x) > vIndex(y) ? [x, y] : [y, x]; // older → newer
+  try {
+    const r = await api('compare', { repo: S.repo, a, b });
+    S.selected = b;
+    S.detail = { compare: r, sha: b, parents: [a], files: r.files.map((f) => ({ ...f, srcSha: b, srcParent: a })) };
+    closeDiff(); renderRows(); renderDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+// ================================================================ drag a branch onto another branch / commit
+function dropMenu(src, c) {
+  const cur = S.info?.branch;
+  const labels = refLabels(c.sha);
+  const tgt = labels.find((r) => r.type === 'branch') || labels.find((r) => r.type === 'remote') || null;
+  const tName = tgt ? tgt.name : c.sha.slice(0, 7), tRef = tgt ? tgt.name : c.sha;
+  /** @type {MenuItem[]} */
+  const items = [{ head: `${src.name}  →  ${tName}` }];
+  if (tgt?.type === 'branch' && tgt.name === cur && src.name !== cur) { // onto the checked-out branch
+    items.push({ label: `${src.name} 를 ${cur} 에 머지`, hint: 'merge', icon: 'merge', run: () => run('merge', { ref: src.name }, { label: '머지' }) });
+    items.push({ label: `${cur} 를 ${src.name} 위로 리베이스`, hint: 'rebase', icon: 'rebase', run: () => run('rebase', { ref: src.name }, { label: '리베이스' }) });
+    items.push({ label: `${cur} 를 ${src.name} 로 빨리감기`, hint: 'merge --ff-only', icon: 'ff', run: () => run('ff', { ref: src.name }, { label: '빨리감기' }) });
+    items.push({ label: `${cur} 를 ${src.name} 로 리셋`, hint: 'reset', sub: resetSub(src.name, src.name) });
+  } else if (src.type === 'branch' && src.name === cur) { // dragged the checked-out branch
+    items.push({ label: `${tName} 를 ${cur} 에 머지`, hint: 'merge', icon: 'merge', run: () => run('merge', { ref: tRef }, { label: '머지' }) });
+    items.push({ label: `${cur} 를 ${tName} 위로 리베이스`, hint: 'rebase', icon: 'rebase', run: () => run('rebase', { ref: tRef }, { label: '리베이스' }) });
+    items.push({ label: `${cur} 를 ${tName} 로 리셋`, hint: 'reset', sub: resetSub(c.sha, tName) });
+  } else if (tgt?.type === 'branch') { // neither is checked out: switch first, then act
+    const both = async (to, action, ref, label) => { if (await run('checkout', { ref: to, kind: 'branch' }, { quiet: true, noUndo: true })) run(action, { ref }, { label }); };
+    items.push({ label: `${tgt.name} 로 전환하고 ${src.name} 머지`, hint: 'checkout · merge', icon: 'merge', run: () => both(tgt.name, 'merge', src.name, '머지') });
+    if (src.type === 'branch') items.push({ label: `${src.name} 로 전환하고 ${tgt.name} 위로 리베이스`, hint: 'checkout · rebase', icon: 'rebase', run: () => both(src.name, 'rebase', tgt.name, '리베이스') });
+  }
+  if (src.type === 'branch' && src.name !== cur) items.push({ label: `${src.name} 브랜치를 이 커밋으로 옮기기`, hint: 'branch -f', icon: 'move', run: () => run('moveBranch', { name: src.name, sha: c.sha }, { label: '브랜치 이동' }) });
+  items.push('-', { label: '두 커밋 비교', icon: 'layers', run: () => compareCommits(src.sha, c.sha) });
+  return items;
+}
+function initRefDrag() {
+  /** @type {any} */
+  let drag = null;
+  const end = () => { if (!drag) return; drag.ghost?.remove(); drag.target?.classList.remove('drop'); document.body.classList.remove('dragging-ref'); };
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const p = /** @type {Element} */ (e.target).closest?.('#rows .c-ref .pill, #refpop [data-ref], #sb-body [data-ref]');
+    const ref = p && findRef(/** @type {HTMLElement} */ (p).dataset.ref);
+    drag = ref && ref.type !== 'tag' ? { ref, x: e.clientX, y: e.clientY, on: false } : null;
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    if (!drag.on) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+      drag.on = true; hideRefPop(); window.getSelection()?.removeAllRanges();
+      drag.ghost = document.createElement('div'); drag.ghost.className = 'drag-ghost';
+      drag.ghost.innerHTML = `${icon(drag.ref.type === 'remote' ? 'cloud' : 'branch')}<span>${escN(drag.ref.name)}</span><small>다른 브랜치·커밋에 놓기</small>`;
+      document.body.append(drag.ghost); document.body.classList.add('dragging-ref');
+    }
+    drag.ghost.style.left = e.clientX + 'px'; drag.ghost.style.top = e.clientY + 'px';
+    const row = document.elementFromPoint(e.clientX, e.clientY)?.closest('#rows .row');
+    const ok = row && !rowAt(+(/** @type {HTMLElement} */ (row).dataset.v))?.wip ? row : null;
+    if (ok !== drag.target) { drag.target?.classList.remove('drop'); drag.target = ok; ok?.classList.add('drop'); }
+    const sc = $('#graph-scroll'), r = sc.getBoundingClientRect(); // auto-scroll near the edges
+    if (e.clientX > r.left && e.clientX < r.right) { if (e.clientY < r.top + 30) sc.scrollTop -= 12; else if (e.clientY > r.bottom - 30) sc.scrollTop += 12; }
+  });
+  document.addEventListener('pointerup', (e) => {
+    const d = drag; if (!d) return;
+    end(); drag = null;
+    if (!d.on) return;
+    const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+    window.addEventListener('click', eat, true); setTimeout(() => window.removeEventListener('click', eat, true), 0);
+    if (!d.target) return;
+    const c = rowAt(+d.target.dataset.v);
+    if (!c || c.wip || c.sha === d.ref.sha) return;
+    showMenu(dropMenu(d.ref, c), e.clientX, e.clientY);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drag?.on) { end(); drag = null; } }, true);
 }
 
 // ================================================================ diff + rich preview
@@ -915,7 +1074,7 @@ async function getPatch(f) {
   const params = { repo: S.repo, path: f.path };
   if (f.oldPath) params.oldPath = f.oldPath;
   if (f.srcSha) { params.sha = f.srcSha; if (f.srcParent) params.parent = f.srcParent; }
-  else if (d.wip) { params.sha = 'WIP'; if (f.status === '?') params.untracked = '1'; }
+  else if (d.wip) { params.sha = 'WIP'; if (f.status === '?') params.untracked = '1'; if (f.side) params.side = f.side; }
   else { params.sha = d.sha; if (d.parents[0]) params.parent = d.parents[0]; }
   const r = await api('diff', params);
   S.diffPatch = { f, r };
@@ -2214,7 +2373,13 @@ function bind() {
   });
   sc.addEventListener('scroll', hideRefPop, { passive: true });
   rows.addEventListener('click', (e) => { const b = e.target.closest('[data-open-wt]'); if (b) { e.stopPropagation(); openTab(b.dataset.openWt); } });
-  rows.addEventListener('mousedown', (e) => { const r = e.target.closest('.row'); if (r && e.button === 0) { selectCommit(rowAt(+r.dataset.v).sha, { scroll: false }); sc.focus(); } });
+  rows.addEventListener('mousedown', (e) => {
+    const r = e.target.closest('.row'); if (!r || e.button !== 0) return;
+    const c = rowAt(+r.dataset.v);
+    const cmp = e.metaKey || (e.ctrlKey && S.platform !== 'darwin');
+    if (cmp && S.selected && S.selected !== 'WIP' && !c.wip && c.sha !== S.selected) { compareCommits(S.detail?.compare ? S.detail.compare.b : S.selected, c.sha); sc.focus(); return; }
+    selectCommit(c.sha, { scroll: false }); sc.focus();
+  });
   rows.addEventListener('dblclick', (e) => {
     const p = e.target.closest('[data-ref]'); if (!p) return;
     const ref = findRef(p.dataset.ref);
@@ -2238,6 +2403,10 @@ function bind() {
     if (e.target.closest('[data-st-close]')) { S.detail = null; closeDiff(); return renderDetail(); }
     if (e.target.closest('[data-st-fold]')) { S.collapsed.has('stash-panel') ? S.collapsed.delete('stash-panel') : S.collapsed.add('stash-panel'); LS.set('collapsed', [...S.collapsed]); return renderDetail(); }
     const si = e.target.closest('[data-st]'); if (si) return openStash(+si.dataset.st);
+    const stg = e.target.closest('[data-stage]'); if (stg) { e.stopPropagation(); return stageFiles(stg.dataset.stage, [stg.dataset.path]); }
+    const sta = e.target.closest('[data-stage-all]'); if (sta) return stageFiles(sta.dataset.stageAll);
+    if (e.target.closest('#c-go')) return doCommit();
+    if (e.target.closest('[data-cmp-close]')) return selectCommit(S.detail.compare.b, { force: true });
     const f = e.target.closest('.file'); if (f) { S.focusZone = 'files'; return openDiff(+f.dataset.fi); }
     const g = e.target.closest('[data-goto]'); if (g) return selectCommit(g.dataset.goto);
     const cp = e.target.closest('[data-copy]'); if (cp) return copy(cp.dataset.copy);
@@ -2405,7 +2574,7 @@ function bind() {
     if (S.focusZone === 'files' && S.detailFiles?.length && /^(ArrowDown|ArrowUp|j|k|Enter)$/.test(e.key)) {
       e.preventDefault();
       const els = [...document.querySelectorAll('#detail .file')]; // DOM order (folder view sorts differently)
-      const cur = els.findIndex((x) => S.detailFiles[+x.dataset.fi] === S.diffFile);
+      const cur = els.findIndex((x) => fkey(S.detailFiles[+x.dataset.fi]) === fkey(S.diffFile));
       const step = e.key === 'Enter' ? 0 : e.key === 'ArrowDown' || e.key === 'j' ? 1 : -1;
       const next = els[Math.max(0, Math.min(els.length - 1, cur < 0 ? 0 : cur + step))];
       if (next) openDiff(+next.dataset.fi);
@@ -2612,6 +2781,7 @@ function undoFor(action, args, b) {
     case 'deleteBranch': return b.branches.has(args.name) ? () => back([['branch', { name: args.name, sha: b.branches.get(args.name), checkout: false }]], '브랜치 삭제') : null;
     case 'branch': return () => back([...(args.checkout ? [backTo()] : []), ['deleteBranch', { name: args.name, force: true }]], '브랜치 생성');
     case 'tag': return () => back([['deleteTag', { name: args.name }]], '태그 생성');
+    case 'commit': return () => back([['reset', { sha: b.head, mode: 'soft' }]], args.amend ? '커밋 고치기' : '커밋'); // changes stay staged
     case 'stash': return () => back([['pop', {}]], '스태시');
     case 'discardAll': case 'discardFile': return b.dirty && !args.untracked ? () => back([['restoreDiscard', {}]], '변경 버리기') : null;
     default: return null;
@@ -2644,7 +2814,7 @@ async function fileHistory(p) {
 function showShortcuts() {
   const rows = [
     ['⌘K', '명령 팔레트 (저장소 · 브랜치 · 명령)'], ['⌘O', '저장소 찾기 / 열기'], ['⌘F', '커밋 검색 (전체 히스토리)'], ['⌘⌥F', '브랜치 필터'],
-    ['↑ ↓ / j k', '커밋 이동'], ['PageUp / PageDown', '한 화면씩 이동'], ['Shift+H', 'HEAD 로 이동'], ['Enter', '첫 번째 파일 diff 열기'],
+    ['↑ ↓ / j k', '커밋 이동'], ['PageUp / PageDown', '한 화면씩 이동'], ['Shift+H', 'HEAD 로 이동'], ['Enter', '첫 번째 파일 diff 열기'], ['⌘+클릭', '두 커밋 비교'], ['⌘↵', '커밋 (입력칸에서)'], ['브랜치 끌어다 놓기', '머지 · 리베이스 · 리셋 메뉴'],
     ['⌘Z', '방금 한 작업 되돌리기'], ['⌃`', '내장 터미널 열기 / 닫기'], ['⌘1 – ⌘9', '탭 전환'], ['⌘W', '탭 닫기'], ['⌘R', '새로고침'], ['Esc', '닫기'],
     ['더블클릭 (브랜치)', '그 브랜치로 전환'], ['우클릭', '커밋 / 브랜치 / 파일 작업'], ['폴더 드래그', '저장소 열기'], ['헤더 경계 드래그', '컬럼 너비 (더블클릭: 기본값)'],
   ];
@@ -2793,7 +2963,7 @@ function bindColumnResize() {
   S.L = new Layout();
   applyGeometry();
   applyTheme();
-  bind(); bindTips(); bindColumnResize(); bindTerminal(); connectBus();
+  bind(); bindTips(); bindColumnResize(); bindTerminal(); connectBus(); initRefDrag();
   window.gittreeOpen = (p) => openTab(p);
   window.grRefresh = () => S.repo && loadRepo(S.repo, { keep: true, manual: true });
   const [ver, def] = await Promise.all([api('version').catch(() => ({})), api('default').catch(() => ({}))]);

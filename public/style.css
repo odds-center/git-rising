@@ -727,3 +727,42 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
 
 /* GitKraken-style: the message column starts with a bar in the commit's lane colour */
 .row > .c-msg { box-shadow: inset 2px 0 0 var(--lc, transparent); background: linear-gradient(90deg, color-mix(in srgb, var(--lc, transparent) 13%, transparent), transparent 140px); }
+
+/* ---- WIP panel: stage / unstage / commit ---- */
+.wip-wrap { display: flex; flex-direction: column; min-height: 100%; }
+.wip-live { flex: 1; }
+.wip-sec { display: flex; align-items: center; gap: 8px; padding: 10px 14px 4px; }
+.wip-sec b { color: var(--text); margin-left: 3px; }
+.wip-sec .btn { margin-left: auto; height: 20px; font-size: 11px; }
+.wip-empty { padding: 2px 14px 6px; font-size: 11px; color: var(--muted); }
+.file .fbtn { flex: none; width: 18px; height: 18px; border-radius: 5px; border: 0; background: var(--active); color: var(--text); font: 700 13px/1 var(--mono); display: none; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.file:hover .fbtn, .file.selected .fbtn { display: flex; }
+.file .fbtn:hover { background: var(--accent); color: #fff; }
+.cbox { position: sticky; bottom: 0; background: var(--panel); border-top: 1px solid var(--border); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 -8px 16px -12px rgba(0,0,0,.4); }
+.cbox .field { margin: 0; }
+.cb-top { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.cb-top .chk { margin-left: auto; font-size: 11px; color: var(--muted); }
+.cb-who { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-sum { position: relative; }
+.cb-sum .field { padding-right: 34px; font-weight: 600; }
+#c-len { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font: 10px var(--mono); color: var(--muted); }
+#c-len.over { color: var(--del); }
+#c-body { min-height: 54px; max-height: 160px; resize: vertical; font: inherit; }
+#c-go { justify-content: center; height: 30px; gap: 6px; }
+#c-go kbd { opacity: .7; font-size: 10px; }
+#c-go:disabled { opacity: .45; cursor: default; }
+
+/* ---- compare two commits ---- */
+.cmp-side { display: flex; gap: 8px; align-items: baseline; margin-top: 6px; font-size: 12px; min-width: 0; }
+.cmp-l { flex: none; font-size: 10.5px; color: var(--muted); width: 26px; }
+.cmp-side a { font-family: var(--mono); color: var(--accent); cursor: pointer; flex: none; }
+.cmp-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row.cmp { box-shadow: inset 3px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+
+/* ---- dragging a branch ---- */
+.drag-ghost { position: fixed; z-index: 9999; pointer-events: none; transform: translate(14px, 10px); display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9px; background: var(--accent); color: #fff; font-weight: 600; font-size: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.35); white-space: nowrap; }
+.drag-ghost small { font-weight: 400; opacity: .8; font-size: 10.5px; }
+.drag-ghost svg { width: 13px; height: 13px; }
+body.dragging-ref, body.dragging-ref * { cursor: grabbing !important; user-select: none !important; }
+.row.drop { background: color-mix(in srgb, var(--accent) 16%, transparent) !important; box-shadow: inset 0 0 0 1.5px var(--accent); }
+#rows .c-ref .pill { cursor: grab; }
