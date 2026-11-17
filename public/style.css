@@ -766,3 +766,15 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
 body.dragging-ref, body.dragging-ref * { cursor: grabbing !important; user-select: none !important; }
 .row.drop { background: color-mix(in srgb, var(--accent) 16%, transparent) !important; box-shadow: inset 0 0 0 1.5px var(--accent); }
 #rows .c-ref .pill { cursor: grab; }
+
+/* delete dialog: one row per place the name lives */
+.del-opts { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 12px; }
+.del-o { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--border2); cursor: pointer; }
+.del-o:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.del-o input { margin-top: 2px; }
+.del-o span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.del-o b { font-weight: 600; }
+.del-o small { color: var(--muted); font-size: 11px; white-space: pre-line; word-break: break-all; }
+.del-o.locked { opacity: .55; cursor: default; }
+.del-o.force { background: transparent; box-shadow: none; padding-top: 4px; }
+.pill svg { flex: none; }

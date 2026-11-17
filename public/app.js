@@ -483,7 +483,7 @@ function refLabels(sha) {
 function pillHTML(r, color) {
   const isHead = r.type === 'branch' && r.name === S.info?.branch;
   const wt = r.type === 'branch' && !isHead ? otherWorktree(r.name) : null; // checked out in another worktree
-  const ic = r.type === 'tag' ? icon('tag') : isHead ? icon('check') : wt ? `<span class="p-wt">${icon('tree')}</span>` : r.type === 'remote' ? icon('cloud') : '';
+  const ic = r.type === 'tag' ? icon('tag') : isHead ? icon('check') : wt ? `<span class="p-wt">${icon('tree')}</span>` : r.type === 'remote' ? icon('cloud') : icon('laptop');
   const cloud = r.type === 'branch' && r.remotes?.length ? icon('cloud') : '';
   const tip = [r.type === 'tag' ? '태그 ' + r.name : r.name, ...(r.remotes || []).filter((x) => x !== r.name)].join('\n');
   return `<span class="pill ${r.type}${isHead ? ' head' : ''}${wt ? ' in-wt' : ''}" style="--pc:${color}" data-ref="${esc(r.type)}:${esc(r.name)}">${ic}<span class="t">${escN(r.name)}</span>${cloud}</span>`;
@@ -1404,7 +1404,7 @@ function renderSidebar() {
   const leaf = (r, label, d) => {
     const isHead = r.type === 'branch' && r.name === head;
     const wt = r.type === 'branch' && !isHead ? otherWorktree(r.name) : null;
-    const ic = r.type === 'tag' ? 'tag' : isHead ? 'check' : wt ? 'tree' : 'branch';
+    const ic = r.type === 'tag' ? 'tag' : isHead ? 'check' : wt ? 'tree' : r.type === 'branch' ? 'laptop' : 'branch';
     return `<div class="it${isHead ? ' head' : ''}${wt ? ' in-wt' : ''}${S.selected === r.sha ? ' selected' : ''}" style="${pad(d)}" data-ref="${esc(r.type)}:${esc(r.name)}" title="${esc(r.name)}${wt ? '\n다른 폴더에서 열려 있어요: ' + esc(tilde(wt.path)) : ''}">${icon(ic)}<span class="nm">${escN(label)}</span>${wt ? `<span class="wt-tag">${esc(wt.path.split(/[\\/]/).pop())}</span>` : ''}${r.type === 'branch' ? trackHTML(r.track) : ''}</div>`;
   };
   const tree = (node, d, kp) => {
@@ -1808,15 +1808,70 @@ function branchItems(ref) {
   items.push({ label: S.solo === name ? '모든 브랜치 보기' : '이 브랜치만 보기', hint: 'solo', tip: '그래프에 이 브랜치의 기록만 표시합니다', run: () => setSolo(S.solo === name ? null : name) });
   return items;
 }
+// One delete dialog for everything a name can live in: local branch, remote branch(es), the worktree that has it
+// checked out, local / remote tag. Ticked items are removed in a safe order (worktree → local → remote).
 function deleteItems(ref) {
   const cur = S.info?.branch;
-  if (ref.type === 'branch' && ref.name !== cur) return [{ label: `브랜치 ${ref.name} 삭제`, hint: 'branch -d', danger: true, run: async () => {
-    const r = await modal({ title: `브랜치 삭제 · ${ref.name}`, text: '로컬 브랜치만 삭제합니다 (원격은 그대로).', checkbox: { label: '머지 안 된 커밋이 있어도 강제 삭제 (-D)', checked: false }, ok: '삭제', danger: true });
-    if (r) run('deleteBranch', { name: ref.name, force: r.checked }, { label: `${ref.name} 삭제` });
-  } }];
-  if (ref.type === 'remote') return [{ label: `원격 브랜치 ${ref.name} 삭제`, hint: 'push --delete', danger: true, run: () => confirmRun('원격 브랜치 삭제', `원격에서 브랜치를 지웁니다 (다른 사람에게도 영향).\ngit push ${ref.name.split('/')[0]} --delete ${ref.name.slice(ref.name.indexOf('/') + 1)}`, 'deleteRemoteBranch', { ref: ref.name }, '원격 브랜치 삭제') }];
-  if (ref.type === 'tag') return [{ label: `태그 ${ref.name} 삭제`, hint: 'tag -d', danger: true, run: () => confirmRun('태그 삭제', ref.name, 'deleteTag', { name: ref.name }, '태그 삭제') }];
-  return [];
+  if (ref.type === 'tag') return [{ label: `태그 ${ref.name} 삭제…`, hint: 'tag -d', icon: 'trash', danger: true, run: () => deleteDialog(ref) }];
+  const local = ref.type === 'branch' ? ref.name : ref.name.slice(ref.name.indexOf('/') + 1);
+  const hasLocal = S.refs.some((r) => r.type === 'branch' && r.name === local);
+  const remotes = ref.type === 'remote' ? [ref.name] : (ref.remotes || []);
+  if (local === cur && !remotes.length) return [];
+  const what = [hasLocal && local !== cur ? '로컬' : '', remotes.length ? '원격' : '', otherWorktree(local) ? '워크트리' : ''].filter(Boolean).join(' · ');
+  return [{ label: `${local} 삭제…`, hint: what, icon: 'trash', danger: true, run: () => deleteDialog(ref) }];
+}
+async function deleteDialog(ref) {
+  const cur = S.info?.branch;
+  /** @type {{key:string,label:string,sub:string,on:boolean,lock?:string}[]} */
+  const opts = [];
+  let title;
+  if (ref.type === 'tag') {
+    title = `태그 삭제 · ${ref.name}`;
+    opts.push({ key: 'tag', label: `로컬 태그 ${ref.name}`, sub: 'git tag -d', on: true });
+    for (const rm of Object.keys(S.meta.remotes || {}).length ? Object.keys(S.meta.remotes) : (S.refs.some((r) => r.type === 'remote') ? ['origin'] : []))
+      opts.push({ key: 'rtag:' + rm, label: `원격 태그 ${rm}/${ref.name}`, sub: `git push ${rm} --delete refs/tags/${ref.name} — 다른 사람에게도 사라짐`, on: false });
+  } else {
+    const local = ref.type === 'branch' ? ref.name : ref.name.slice(ref.name.indexOf('/') + 1);
+    title = `브랜치 삭제 · ${local}`;
+    const lref = S.refs.find((r) => r.type === 'branch' && r.name === local);
+    const remotes = [...new Set([...(ref.type === 'remote' ? [ref.name] : []), ...(lref?.remotes || []), ...S.refs.filter((r) => r.type === 'remote' && r.name.slice(r.name.indexOf('/') + 1) === local).map((r) => r.name)])];
+    const wt = otherWorktree(local);
+    if (lref) opts.push({ key: 'local', label: `로컬 브랜치 ${local}`, sub: 'git branch -d', on: ref.type === 'branch', lock: local === cur ? '지금 체크아웃된 브랜치라 지울 수 없어요 — 다른 브랜치로 옮긴 뒤에' : '' });
+    if (wt) opts.push({ key: 'wt', label: `워크트리 '${wt.path.split(/[\\/]/).pop()}' 폴더`, sub: `git worktree remove — ${tilde(wt.path)}\n이 브랜치가 거기 체크아웃돼 있어서, 로컬 브랜치를 지우려면 먼저 지워야 해요`, on: ref.type === 'branch' });
+    for (const r of remotes) opts.push({ key: 'remote:' + r, label: `원격 브랜치 ${r}`, sub: `git push ${r.split('/')[0]} --delete ${r.slice(r.indexOf('/') + 1)} — 다른 사람에게도 사라짐`, on: ref.type === 'remote' && r === ref.name });
+  }
+  opts.push({ key: 'force', label: '강제로', sub: ref.type === 'tag' ? '' : '머지 안 된 커밋이 있어도 지움 (branch -D) · 워크트리에 저장 안 한 변경이 있어도 지움', on: false });
+  if (ref.type === 'tag') opts.pop();
+  const state = Object.fromEntries(opts.map((o) => [o.key, o.on && !o.lock]));
+  const html = `<div class="del-opts">${opts.map((o) => `<label class="del-o${o.lock ? ' locked' : ''}${o.key === 'force' ? ' force' : ''}"><input type="checkbox" data-del="${esc(o.key)}"${state[o.key] ? ' checked' : ''}${o.lock ? ' disabled' : ''}><span><b>${escN(o.label)}</b><small>${esc(o.lock || o.sub)}</small></span></label>`).join('')}</div>`;
+  const p = modal({ title, html, ok: '삭제', danger: true, wide: true });
+  const L = $('#modal-layer');
+  const okBtn = /** @type {HTMLButtonElement} */ ($('#m-ok'));
+  const sync = () => { okBtn.disabled = !Object.entries(state).some(([k, v]) => v && k !== 'force'); };
+  L.querySelectorAll('[data-del]').forEach((cb) => (cb.onchange = () => {
+    const k = cb.dataset.del, on = cb.checked;
+    state[k] = on;
+    // a branch checked out in a worktree can only go after its worktree
+    if (k === 'local' && on && 'wt' in state && !state.wt) { state.wt = true; L.querySelector('[data-del="wt"]').checked = true; }
+    if (k === 'wt' && !on && state.local) { state.local = false; L.querySelector('[data-del="local"]').checked = false; }
+    sync();
+  }));
+  sync();
+  if (!(await p)) return;
+  const force = !!state.force, done = [];
+  const step = async (action, args, label) => { const ok = await run(action, args, { quiet: true, label }); if (ok) done.push(label); return ok; };
+  if (ref.type === 'tag') {
+    if (state.tag && !(await step('deleteTag', { name: ref.name }, `태그 ${ref.name}`))) return;
+    for (const k of Object.keys(state)) if (k.startsWith('rtag:') && state[k]) await step('deleteRemoteTag', { name: ref.name, remote: k.slice(5) }, `원격 태그 ${k.slice(5)}/${ref.name}`);
+  } else {
+    const local = ref.type === 'branch' ? ref.name : ref.name.slice(ref.name.indexOf('/') + 1);
+    const wt = otherWorktree(local);
+    if (state.wt && wt && !(await step('removeWorktree', { path: wt.path, force }, `워크트리 ${wt.path.split(/[\\/]/).pop()}`))) return;
+    if (state.local && !(await step('deleteBranch', { name: local, force }, `로컬 ${local}`))) return;
+    for (const k of Object.keys(state)) if (k.startsWith('remote:') && state[k]) await step('deleteRemoteBranch', { ref: k.slice(7) }, `원격 ${k.slice(7)}`);
+  }
+  if (done.length) toast(`삭제했어요\n${done.join('\n')}`, 'ok', S.lastUndo && done.some((d) => d.startsWith('로컬')) ? [{ label: '로컬 브랜치 되살리기', run: S.lastUndo.fn }] : []);
+  loadRepo(S.repo, { keep: true });
 }
 function commitMenu(c, ref) {
   const cur = S.info?.branch || 'HEAD', sha = c.sha, short = sha.slice(0, 7);
@@ -2434,7 +2489,23 @@ function bind() {
     if (!ref || ref.type === 'tag' || (ref.type === 'branch' && ref.name === S.info?.branch)) return;
     run('checkout', { ref: ref.name, kind: ref.type }, { label: `${ref.name} 전환` });
   });
-  $('#sb-body').addEventListener('contextmenu', (e) => { const it = e.target.closest('[data-ref]'); if (!it) return; e.preventDefault(); const ref = findRef(it.dataset.ref); if (ref) showMenu(refMenu(ref), e.clientX, e.clientY); });
+  $('#sb-body').addEventListener('contextmenu', (e) => {
+    const w = e.target.closest('[data-wt]');
+    if (w) {
+      e.preventDefault();
+      const wt = (S.meta.worktrees || []).find((x) => x.path === w.dataset.wt);
+      const main = (S.meta.worktrees || [])[0]?.path === w.dataset.wt, here = w.dataset.wt === S.info?.path;
+      return showMenu([
+        { head: w.dataset.wt.split(/[\\/]/).pop() },
+        { label: '새 탭으로 열기', icon: 'tree', run: () => openTab(w.dataset.wt) },
+        { label: 'Finder / 탐색기로 열기', icon: 'folder', run: () => post('action', { repo: w.dataset.wt }, { action: 'reveal' }).catch(() => {}) },
+        { label: '경로 복사', run: () => copy(w.dataset.wt) },
+        '-',
+        { label: wt?.branch ? `워크트리 삭제… (${wt.branch} 브랜치도 고를 수 있음)` : '워크트리 삭제…', icon: 'trash', danger: true, disabled: main || here, tip: main ? '원래 저장소 폴더는 지울 수 없어요' : here ? '지금 보고 있는 워크트리예요 — 다른 탭에서 지우세요' : '',
+          run: () => (wt?.branch ? deleteDialog(S.refs.find((r) => r.type === 'branch' && r.name === wt.branch) || { type: 'branch', name: wt.branch, sha: wt.head }) : confirmRun('워크트리 삭제', tilde(w.dataset.wt), 'removeWorktree', { path: w.dataset.wt }, '워크트리 삭제')) },
+      ], e.clientX, e.clientY);
+    }
+    const it = e.target.closest('[data-ref]'); if (!it) return; e.preventDefault(); const ref = findRef(it.dataset.ref); if (ref) showMenu(refMenu(ref), e.clientX, e.clientY); });
   $('#sb-filter').addEventListener('input', debounce(renderSidebar, 80));
   $('#sb-repo').onclick = () => ((S.meta.worktrees || []).length > 1 ? openPalette('family') : openPalette('repos'));
   $('#sb-branch').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); branchChipMenu(r.left, r.bottom + 4); };

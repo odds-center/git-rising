@@ -767,6 +767,22 @@ const actions = {
     const rev = await checkRev(repo, sha);
     return message ? git(repo, ['tag', '-a', name, '-m', message, rev]) : git(repo, ['tag', name, rev]);
   },
+  async deleteRemoteTag(repo, { name, remote = 'origin' }) {
+    await checkTagName(repo, name);
+    if (!/^[\w.-]+$/.test(remote)) throw httpError(400, 'bad remote');
+    return git(repo, ['push', remote, '--delete', `refs/tags/${name}`]);
+  },
+  // Remove a linked worktree (its folder). The main checkout and the one being viewed are refused.
+  async removeWorktree(repo, { path: wtPath, force }) {
+    const list = (await git(repo, ['worktree', 'list', '--porcelain'])).split('\n').filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9));
+    const target = list.find((p) => path.resolve(p) === path.resolve(String(wtPath || '')));
+    if (!target) throw httpError(404, '그런 워크트리가 없어요');
+    if (target === list[0]) throw httpError(400, '원래 저장소 폴더는 지울 수 없어요');
+    if (path.resolve(target) === path.resolve(repo)) throw httpError(400, '지금 보고 있는 워크트리는 지울 수 없어요 — 다른 탭에서 지우세요');
+    await git(repo, ['worktree', 'remove', ...(force ? ['--force'] : []), target]);
+    await git(repo, ['worktree', 'prune']).catch(() => {});
+    return `워크트리 ${path.basename(target)} 를 지웠어요`;
+  },
   async deleteTag(repo, { name }) {
     await checkTagName(repo, name);
     return git(repo, ['tag', '-d', name]);
