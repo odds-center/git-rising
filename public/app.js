@@ -755,7 +755,7 @@ function fileListHTML(files, startIdx = 0) {
     const n = f.add != null ? `<span class="n"><span class="a">+${f.add}</span> <span class="d">−${f.del}</span></span>` : KIND_LABEL[k] ? `<span class="kind">${KIND_LABEL[k]}</span>` : '';
     const p = short ? `<bdi>${escN(base)}</bdi>` : `<bdi><span class="dir">${escN(dir)}</span>${escN(base)}</bdi>`;
     const [fic, fcol] = fileIcon(f.path);
-    return `<div class="file${!$('#diff-view').hidden && fkey(S.diffFile) === fkey(f) ? ' selected' : ''}" data-fi="${i + startIdx}" title="${esc(f.oldPath ? f.oldPath + ' → ' + f.path : f.path)}"><span class="st st-${esc(f.status)}">${sym[f.status] || f.status}</span><span class="fic" style="color:${fcol}">${icon(fic)}</span><span class="p">${p}</span>${n}${f.side ? `<button class="fbtn" data-stage="${f.side === 'staged' ? 'unstage' : 'stage'}" data-path="${esc(f.path)}" title="${f.side === 'staged' ? '스테이징 취소 — git reset' : '스테이징 — git add'}">${f.side === 'staged' ? '−' : '+'}</button>` : ''}</div>`;
+    return `<div class="file${!$('#diff-view').hidden && fkey(S.diffFile) === fkey(f) ? ' selected' : ''}" data-fi="${i + startIdx}" title="${esc(f.oldPath ? f.oldPath + ' → ' + f.path : f.path)}"><span class="st st-${esc(f.status)}">${sym[f.status] || f.status}</span><span class="fic" style="color:${fcol}">${icon(fic)}</span><span class="p">${p}</span>${n}${f.side ? `<button class="fbtn" data-stage="${f.side === 'staged' ? 'unstage' : 'stage'}" data-path="${esc(f.path)}" title="${f.side === 'staged' ? '스테이징 취소, git reset' : '스테이징, git add'}">${f.side === 'staged' ? '−' : '+'}</button>` : ''}</div>`;
   };
   if (S.fileView === 'tree') {
     const groups = new Map();
@@ -775,10 +775,10 @@ function stashSectionHTML() {
   const list = S.stashList || [];
   if (!list.length) return '';
   const open = !S.collapsed.has('stash-panel');
-  return `<div class="st-sec"><button class="st-h${open ? '' : ' collapsed'}" data-st-fold><span class="chev">${icon('chev-down')}</span>${icon('archive')}<b>스태시</b><span class="cnt">${list.length}</span><span class="st-hint">임시 보관한 변경</span><span class="st-clear" data-st-clear title="스태시 전체 삭제 — git stash clear">${icon('trash')} 전체 삭제</span></button>
+  return `<div class="st-sec"><button class="st-h${open ? '' : ' collapsed'}" data-st-fold><span class="chev">${icon('chev-down')}</span>${icon('archive')}<b>스태시</b><span class="cnt">${list.length}</span><span class="st-hint">임시 보관한 변경</span><span class="st-clear" data-st-clear title="스태시 전체 삭제, git stash clear">${icon('trash')} 전체 삭제</span></button>
     ${open ? list.map((st) => `<div class="st-it${S.detail?.stash?.index === st.index ? ' selected' : ''}" data-st="${st.index}" title="${esc(st.message)}\n눌러서 내용 미리보기">
       <div class="st-tx"><div class="st-t">${escN(st.title || '(메시지 없음)')}</div><div class="st-d">${icon('branch')}${escN(st.branch || '?')} · ${relDate(st.time)}</div></div>
-      <div class="st-b"><button class="btn sm" data-st-act="stashApply" data-i="${st.index}" title="적용 (스태시는 남김) — git stash apply">적용</button><button class="btn sm primary" data-st-act="stashPop" data-i="${st.index}" title="꺼내기 (적용 후 삭제) — git stash pop">꺼내기</button><button class="ib" data-st-act="stashDrop" data-i="${st.index}" title="삭제 — git stash drop">${icon('trash')}</button></div></div>`).join('') : ''}</div>`;
+      <div class="st-b"><button class="btn sm" data-st-act="stashApply" data-i="${st.index}" title="적용 (스태시는 남김), git stash apply">적용</button><button class="btn sm primary" data-st-act="stashPop" data-i="${st.index}" title="꺼내기 (적용 후 삭제), git stash pop">꺼내기</button><button class="ib" data-st-act="stashDrop" data-i="${st.index}" title="삭제, git stash drop">${icon('trash')}</button></div></div>`).join('') : ''}</div>`;
 }
 async function openStash(index) {
   try {
@@ -889,7 +889,7 @@ function renderWip(el) {
   const dr = draft();
   el.innerHTML = `<div class="wip-wrap"><div class="wip-live">${live}</div>
     <div class="cbox">
-      <div class="cb-top"><b>커밋</b>${ID.data?.effective?.email ? `<span class="cb-who" title="${esc(ID.data.effective.email)}">${escN(ID.data.effective.name)}</span>` : ''}<label class="chk" title="새 커밋 대신 직전 커밋에 합칩니다 — git commit --amend"><input type="checkbox" id="c-amend"${dr.amend ? ' checked' : ''}> 직전 커밋 고치기</label></div>
+      <div class="cb-top"><b>커밋</b>${ID.data?.effective?.email ? `<span class="cb-who" title="${esc(ID.data.effective.email)}">${escN(ID.data.effective.name)}</span>` : ''}<label class="chk" title="새 커밋 대신 직전 커밋에 합칩니다, git commit --amend"><input type="checkbox" id="c-amend"${dr.amend ? ' checked' : ''}> 직전 커밋 고치기</label></div>
       <div class="cb-sum"><input class="field" id="c-sum" placeholder="요약 (필수)" spellcheck="false" autocomplete="off"><span id="c-len"></span></div>
       <textarea class="field" id="c-body" placeholder="설명 (선택)" spellcheck="false"></textarea>
       <button class="btn primary" id="c-go"></button>
@@ -1443,7 +1443,7 @@ function renderSidebar() {
   $('#sb-body').innerHTML = h;
 
   // header
-  $('#sb-repo-name').textContent = S.info?.name || '—';
+  $('#sb-repo-name').textContent = S.info?.name || '';
   $('#sb-repo-path').innerHTML = S.info ? (S.info.worktree ? `<span class="wt-chip" title="${esc(tilde(S.info.main || ''))} 의 워크트리">${icon('tree')}워크트리</span>` : '') + esc(tilde(S.info.path)) : '';
   if (S.info && $('#sb-repo .repo-ic')?.dataset.repo !== S.info.path + P.repoLogos) { $('#sb-repo .repo-ic').outerHTML = logoHTML(S.info.path); $('#sb-repo .repo-ic').dataset.repo = S.info.path + P.repoLogos; }
   const cur = local.find((r) => r.name === head);
@@ -1452,7 +1452,7 @@ function renderSidebar() {
 // HEAD is not on a branch: describe it by the branch whose position we are looking at, if any
 function headLabel() {
   if (S.info?.branch) return S.info.branch;
-  if (!S.info?.head) return '—';
+  if (!S.info?.head) return '';
   const at = S.refs.find((r) => r.type === 'branch' && r.sha === S.info.head) || S.refs.find((r) => r.type === 'remote' && r.sha === S.info.head);
   return at ? `${at.name} (보기)` : `커밋 ${S.info.head.slice(0, 7)} (보기)`;
 }
@@ -1463,7 +1463,7 @@ function saveTabs() { LS.set('tabs', S.tabs); LS.set('active', S.repo); }
 function isWorktreePath(p) { return (S.repos?.repos || []).some((r) => (r.worktrees || []).some((w) => w.path === p)) || (p === S.repo && !!S.info?.worktree); }
 function renderTabs() {
   $('#tab-list').innerHTML = S.tabs.map((t) => `<div class="tab${t === S.repo ? ' active' : ''}" data-tab="${esc(t)}" title="${esc(tilde(t))}">${logoHTML(t, 'repo-ic tab-ic')}${isWorktreePath(t) ? `<span class="tab-wt" title="워크트리">${icon('tree')}</span>` : ''}<span>${escN(t.split(/[\\/]/).pop())}</span><span class="x" data-close="${esc(t)}">${icon('x')}</span></div>`).join('');
-  document.title = S.info ? `${S.info.name} — Git Rising` : 'Git Rising';
+  document.title = S.info ? `${S.info.name} - Git Rising` : 'Git Rising';
 }
 function renderActions() {
   const cur = S.refs.find((r) => r.type === 'branch' && r.name === S.info?.branch);
@@ -1519,7 +1519,7 @@ function renderBanner() {
   b.hidden = false;
   const name = { merge: '머지', rebase: '리베이스', 'cherry-pick': '체리픽', revert: '되돌리기' }[op] || op;
   const conflicts = S.status.filter((f) => f.status === 'U').length;
-  b.innerHTML = `<b>${name} 진행 중</b>${conflicts ? `<span>충돌 파일 ${conflicts}개 — 해결하고 git add 한 뒤 [계속]</span>` : ''}<span class="grow"></span>
+  b.innerHTML = `<b>${name} 진행 중</b>${conflicts ? `<span>충돌 파일 ${conflicts}개, 해결하고 git add 한 뒤 [계속]</span>` : ''}<span class="grow"></span>
     ${op !== 'merge' ? `<button class="btn sm primary" data-banner="cont">계속</button>` : ''}<button class="btn sm" data-banner="abort">중단</button>`;
 }
 function renderStatusbar() {
@@ -1567,8 +1567,8 @@ function divergedChoice(d, args, label) {
     <p>로컬 ${esc(d.local)} 에만 있는 커밋 ${d.ahead}개 · ${esc(d.remote)} 에만 있는 커밋 ${d.behind}개\n어디로 갈까요?</p>
     <div class="choices">
       <button class="choice" data-c="detach">${icon('eye')}<span><b>${esc(d.remote)} 위치로 이동 (보기만)</b><small>브랜치는 건드리지 않고 그 커밋을 꺼냅니다 (detached)</small></span></button>
-      <button class="choice" data-c="local">${icon('checkout')}<span><b>로컬 ${esc(d.local)} 로 전환</b><small>로컬 브랜치 위치 그대로 — 이후 풀/리베이스로 맞출 수 있어요</small></span></button>
-      <button class="choice danger" data-c="reset">${icon('rotate')}<span><b>로컬 ${esc(d.local)} 을 ${esc(d.remote)} 과 똑같이</b><small>reset --hard — 로컬에만 있는 커밋 ${d.ahead}개가 사라집니다</small></span></button>
+      <button class="choice" data-c="local">${icon('checkout')}<span><b>로컬 ${esc(d.local)} 로 전환</b><small>로컬 브랜치 위치 그대로, 이후 풀/리베이스로 맞출 수 있어요</small></span></button>
+      <button class="choice danger" data-c="reset">${icon('rotate')}<span><b>로컬 ${esc(d.local)} 을 ${esc(d.remote)} 과 똑같이</b><small>reset --hard, 로컬에만 있는 커밋 ${d.ahead}개가 사라집니다</small></span></button>
     </div><div class="btns"><button class="btn" id="m-cancel">취소</button></div></div>`;
   modalResolve = () => {};
   L.onmousedown = (e) => { if (e.target === L) closeModal(); };
@@ -1683,7 +1683,7 @@ async function askpass(ev) {
   const r = await modal({
     title, text: p + (isYesNo ? '\n\n믿을 수 있는 서버면 yes 를 입력하세요.' : ''),
     input: isYesNo ? 'yes' : isUser ? 'username' : '••••••', inputType: isYesNo || isUser ? 'text' : 'password', inputValue: isYesNo ? 'yes' : '',
-    checkbox: isPass && S.platform === 'darwin' ? { label: '키체인에 저장 — 다음부터 자동으로 입력', checked: true } : null, ok: '확인',
+    checkbox: isPass && S.platform === 'darwin' ? { label: '키체인에 저장, 다음부터 자동으로 입력', checked: true } : null, ok: '확인',
   });
   S.askId = ev.id;
   try {
@@ -1772,9 +1772,9 @@ function showMenu(items, x, y) {
 }
 function resetSub(target, label) {
   return [
-    { label: 'Soft — 변경은 스테이징에 남김', hint: '--soft', run: () => resetTo(target, label, 'soft') },
-    { label: 'Mixed — 변경은 작업 폴더에 남김', hint: '--mixed', run: () => resetTo(target, label, 'mixed') },
-    { label: 'Hard — 변경까지 전부 버림', hint: '--hard', danger: true, run: () => resetTo(target, label, 'hard') },
+    { label: 'Soft, 변경은 스테이징에 남김', hint: '--soft', run: () => resetTo(target, label, 'soft') },
+    { label: 'Mixed, 변경은 작업 폴더에 남김', hint: '--mixed', run: () => resetTo(target, label, 'mixed') },
+    { label: 'Hard, 변경까지 전부 버림', hint: '--hard', danger: true, run: () => resetTo(target, label, 'hard') },
   ];
 }
 function moveSub(sha) {
@@ -1829,19 +1829,18 @@ async function deleteDialog(ref) {
     title = `태그 삭제 · ${ref.name}`;
     opts.push({ key: 'tag', label: `로컬 태그 ${ref.name}`, sub: 'git tag -d', on: true });
     for (const rm of Object.keys(S.meta.remotes || {}).length ? Object.keys(S.meta.remotes) : (S.refs.some((r) => r.type === 'remote') ? ['origin'] : []))
-      opts.push({ key: 'rtag:' + rm, label: `원격 태그 ${rm}/${ref.name}`, sub: `git push ${rm} --delete refs/tags/${ref.name} — 다른 사람에게도 사라짐`, on: false });
+      opts.push({ key: 'rtag:' + rm, label: `원격 태그 ${rm}/${ref.name}`, sub: `git push ${rm} --delete refs/tags/${ref.name}, 다른 사람에게도 사라짐`, on: false });
   } else {
     const local = ref.type === 'branch' ? ref.name : ref.name.slice(ref.name.indexOf('/') + 1);
     title = `브랜치 삭제 · ${local}`;
     const lref = S.refs.find((r) => r.type === 'branch' && r.name === local);
     const remotes = [...new Set([...(ref.type === 'remote' ? [ref.name] : []), ...(lref?.remotes || []), ...S.refs.filter((r) => r.type === 'remote' && r.name.slice(r.name.indexOf('/') + 1) === local).map((r) => r.name)])];
     const wt = otherWorktree(local);
-    if (lref) opts.push({ key: 'local', label: `로컬 브랜치 ${local}`, sub: 'git branch -d', on: ref.type === 'branch', lock: local === cur ? '지금 체크아웃된 브랜치라 지울 수 없어요 — 다른 브랜치로 옮긴 뒤에' : '' });
-    if (wt) opts.push({ key: 'wt', label: `워크트리 '${wt.path.split(/[\\/]/).pop()}' 폴더`, sub: `git worktree remove — ${tilde(wt.path)}\n이 브랜치가 거기 체크아웃돼 있어서, 로컬 브랜치를 지우려면 먼저 지워야 해요`, on: ref.type === 'branch' });
-    for (const r of remotes) opts.push({ key: 'remote:' + r, label: `원격 브랜치 ${r}`, sub: `git push ${r.split('/')[0]} --delete ${r.slice(r.indexOf('/') + 1)} — 다른 사람에게도 사라짐`, on: ref.type === 'remote' && r === ref.name });
+    if (lref) opts.push({ key: 'local', label: `로컬 브랜치 ${local}`, sub: 'git branch -D, 머지 안 된 커밋이 있어도 지웁니다 (직후 토스트에서 되살리기 가능)', on: ref.type === 'branch', lock: local === cur ? '지금 체크아웃된 브랜치라 지울 수 없어요, 다른 브랜치로 옮긴 뒤에' : '' });
+    if (wt) opts.push({ key: 'wt', label: `워크트리 '${wt.path.split(/[\\/]/).pop()}' 폴더`, sub: `git worktree remove, ${tilde(wt.path)}\n이 브랜치가 거기 체크아웃돼 있어서, 로컬 브랜치를 지우려면 먼저 지워야 해요`, on: ref.type === 'branch' });
+    for (const r of remotes) opts.push({ key: 'remote:' + r, label: `원격 브랜치 ${r}`, sub: `git push ${r.split('/')[0]} --delete ${r.slice(r.indexOf('/') + 1)}, 다른 사람에게도 사라짐`, on: ref.type === 'remote' && r === ref.name });
   }
-  opts.push({ key: 'force', label: '강제로', sub: ref.type === 'tag' ? '' : '머지 안 된 커밋이 있어도 지움 (branch -D) · 워크트리에 저장 안 한 변경이 있어도 지움', on: false });
-  if (ref.type === 'tag') opts.pop();
+  if (opts.some((o) => o.key === 'wt')) opts.push({ key: 'force', label: '워크트리에 커밋 안 한 변경이 있어도 지우기', sub: 'git worktree remove --force', on: false });
   const state = Object.fromEntries(opts.map((o) => [o.key, o.on && !o.lock]));
   const html = `<div class="del-opts">${opts.map((o) => `<label class="del-o${o.lock ? ' locked' : ''}${o.key === 'force' ? ' force' : ''}"><input type="checkbox" data-del="${esc(o.key)}"${state[o.key] ? ' checked' : ''}${o.lock ? ' disabled' : ''}><span><b>${escN(o.label)}</b><small>${esc(o.lock || o.sub)}</small></span></label>`).join('')}</div>`;
   const p = modal({ title, html, ok: '삭제', danger: true, wide: true });
@@ -1867,7 +1866,7 @@ async function deleteDialog(ref) {
     const local = ref.type === 'branch' ? ref.name : ref.name.slice(ref.name.indexOf('/') + 1);
     const wt = otherWorktree(local);
     if (state.wt && wt && !(await step('removeWorktree', { path: wt.path, force }, `워크트리 ${wt.path.split(/[\\/]/).pop()}`))) return;
-    if (state.local && !(await step('deleteBranch', { name: local, force }, `로컬 ${local}`))) return;
+    if (state.local && !(await step('deleteBranch', { name: local, force: true }, `로컬 ${local}`))) return;
     for (const k of Object.keys(state)) if (k.startsWith('remote:') && state[k]) await step('deleteRemoteBranch', { ref: k.slice(7) }, `원격 ${k.slice(7)}`);
   }
   if (done.length) toast(`삭제했어요\n${done.join('\n')}`, 'ok', S.lastUndo && done.some((d) => d.startsWith('로컬')) ? [{ label: '로컬 브랜치 되살리기', run: S.lastUndo.fn }] : []);
@@ -1997,7 +1996,7 @@ function actionItems() {
     S.solo && A('모든 브랜치 보기 (필터 해제)', 'branch', () => setSolo(null)),
     A('단축키 보기', 'zap', showShortcuts, '?'),
     A('폴더 선택해서 열기…', 'folder', pickRepo),
-    A('저장소 복제 (clone) — HTTPS / SSH 주소', 'cloud-down', cloneRepo),
+    A('저장소 복제 (clone), HTTPS / SSH 주소', 'cloud-down', cloneRepo),
     S.repo && A('원격 저장소 관리 (추가 · 주소 변경 · HTTPS↔SSH)', 'cloud', () => openSettings('remote')),
     A('저장소 다시 찾기', 'refresh', () => { loadRepos(true); openPalette('repos'); }, '홈 폴더를 다시 스캔'),
     S.repo && A('커밋 작성자(프로필) 바꾸기', 'user', identityMenu),
@@ -2167,7 +2166,7 @@ async function settingsBody(sec) {
       tools = `<h4 class="set-h4">셸 도우미 <small>${esc(st.shell)}</small></h4>
         ${st.omz ? optRow('oh-my-zsh 업데이트', '“자동” 으로 두면 터미널을 열 때 묻지 않고 알아서 업데이트합니다', `<div class="seg" id="omz-mode">${[['auto', '자동'], ['prompt', '물어보기'], ['reminder', '알림만'], ['disabled', '끔']].map(([v, l]) => `<button data-omz="${v}" class="${st.omzMode === v ? 'on' : ''}">${l}</button>`).join('')}</div>`) : ''}
         ${st.omz ? optRow('지금 업데이트', 'oh-my-zsh 와 추가 플러그인·테마를 지금 최신으로', '<button class="btn sm" data-sh=\'{"action":"omzUpdate"}\'>업데이트</button>') : ''}
-        ${plug('zsh-autosuggestions', '입력 예측 (자동완성 제안)', '입력하는 동안 이전에 쓴 명령·경로를 흐리게 미리 보여줍니다 — → 키로 채택')}
+        ${plug('zsh-autosuggestions', '입력 예측 (자동완성 제안)', '입력하는 동안 이전에 쓴 명령·경로를 흐리게 미리 보여줍니다, → 키로 채택')}
         ${plug('zsh-syntax-highlighting', '명령 색상 표시', '입력 중인 명령이 올바른지 색으로 알려줍니다')}
         <div class="set-out" id="sh-out"></div>
         <p class="opt-note">이 설정들은 <code>~/.zshrc</code> 를 고칩니다. 처음 고칠 때 <code>~/.zshrc.git-rising.bak</code> 으로 원본을 남겨요. 외부 터미널에도 똑같이 적용됩니다.</p>`;
@@ -2183,8 +2182,8 @@ async function settingsBody(sec) {
     const rows = d.profiles.map((p) => `<div class="opt"><div class="opt-tx"><div class="opt-t">${profileAvatar(p.name, p.email)} ${escN(p.label)}${p.email === cur.email && p.name === cur.name ? ' <span class="badge ok">이 저장소에서 사용 중</span>' : ''}</div><div class="opt-d">${escN(p.name)} &lt;${esc(p.email)}&gt;${p.sshKey ? ' · SSH 키 ' + esc(p.sshKey.split('/').pop()) : ''}</div></div>
       <div class="opt-c">${S.repo ? `<button class="btn sm primary" data-pf-apply="${p.id}">이 저장소에 적용</button>` : ''}<button class="btn sm" data-pf-edit="${p.id}">수정</button><button class="btn sm" data-pf-del="${p.id}">삭제</button></div></div>`).join('');
     const sug = d.suggestions.map((sg, i) => `<div class="opt"><div class="opt-tx"><div class="opt-t">${profileAvatar(sg.name, sg.email)} ${escN(sg.name)}${sg.global ? ' <span class="badge">전역 설정</span>' : ''}</div><div class="opt-d">${esc(sg.email)}${sg.count ? ` · 이 저장소 최근 커밋 ${sg.count}개` : ''}</div></div><div class="opt-c"><button class="btn sm" data-pf-sug="${i}">프로필로 저장</button></div></div>`).join('');
-    return `<p class="opt-note">커밋에 남는 <b>작성자(이름·이메일)</b>를 프로필로 저장해 두고 저장소마다 골라 씁니다. SSH 키를 지정하면 그 저장소의 push / pull 도 그 키로 합니다 — GitHub 계정을 여러 개 쓸 때 유용해요.</p>
-      ${S.repo ? optRow('이 저장소의 커밋 작성자', cur.email ? `${escN(cur.name)} &lt;${esc(cur.email)}&gt;${d.local ? '' : ' — 전역 설정 사용 중'}` : '설정되지 않음', d.local ? '<button class="btn sm" id="pf-unset">전역 설정으로</button>' : '') : ''}
+    return `<p class="opt-note">커밋에 남는 <b>작성자(이름·이메일)</b>를 프로필로 저장해 두고 저장소마다 골라 씁니다. SSH 키를 지정하면 그 저장소의 push / pull 도 그 키로 합니다, GitHub 계정을 여러 개 쓸 때 유용해요.</p>
+      ${S.repo ? optRow('이 저장소의 커밋 작성자', cur.email ? `${escN(cur.name)} &lt;${esc(cur.email)}&gt;${d.local ? '' : ', 전역 설정 사용 중'}` : '설정되지 않음', d.local ? '<button class="btn sm" id="pf-unset">전역 설정으로</button>' : '') : ''}
       ${rows || '<p class="opt-note">저장된 프로필이 없어요.</p>'}
       ${optRow('새 프로필', '', '<button class="btn sm primary" id="pf-new">만들기</button>')}
       ${sug ? `<h4 class="set-h4">이 PC 에서 쓰던 정보</h4>${sug}` : ''}
@@ -2501,7 +2500,7 @@ function bind() {
         { label: 'Finder / 탐색기로 열기', icon: 'folder', run: () => post('action', { repo: w.dataset.wt }, { action: 'reveal' }).catch(() => {}) },
         { label: '경로 복사', run: () => copy(w.dataset.wt) },
         '-',
-        { label: wt?.branch ? `워크트리 삭제… (${wt.branch} 브랜치도 고를 수 있음)` : '워크트리 삭제…', icon: 'trash', danger: true, disabled: main || here, tip: main ? '원래 저장소 폴더는 지울 수 없어요' : here ? '지금 보고 있는 워크트리예요 — 다른 탭에서 지우세요' : '',
+        { label: wt?.branch ? `워크트리 삭제… (${wt.branch} 브랜치도 고를 수 있음)` : '워크트리 삭제…', icon: 'trash', danger: true, disabled: main || here, tip: main ? '원래 저장소 폴더는 지울 수 없어요' : here ? '지금 보고 있는 워크트리예요, 다른 탭에서 지우세요' : '',
           run: () => (wt?.branch ? deleteDialog(S.refs.find((r) => r.type === 'branch' && r.name === wt.branch) || { type: 'branch', name: wt.branch, sha: wt.head }) : confirmRun('워크트리 삭제', tilde(w.dataset.wt), 'removeWorktree', { path: w.dataset.wt }, '워크트리 삭제')) },
       ], e.clientX, e.clientY);
     }
@@ -2735,7 +2734,7 @@ async function editProfile(p = null, prefill = null) {
     <label class="fl-l">프로필 이름<input class="field" id="pf-label" placeholder="회사 / 개인" value="${esc(v.label || '')}"></label>
     <label class="fl-l">작성자 이름 (user.name)<input class="field" id="pf-name" placeholder="홍길동" value="${esc(v.name || '')}"></label>
     <label class="fl-l">이메일 (user.email)<input class="field" id="pf-email" placeholder="me@example.com" value="${esc(v.email || '')}"></label>
-    <label class="fl-l">SSH 키 (선택) — 이 프로필을 쓰는 저장소는 이 키로 push / pull<select class="field" id="pf-key"><option value="">기본 (ssh 설정 그대로)</option>${ssh.keys.map((k) => `<option value="${esc(k.path)}"${v.sshKey === k.path ? ' selected' : ''}>${esc(k.name)}${k.comment ? ' — ' + esc(k.comment) : ''}</option>`).join('')}</select></label>
+    <label class="fl-l">SSH 키 (선택), 이 프로필을 쓰는 저장소는 이 키로 push / pull<select class="field" id="pf-key"><option value="">기본 (ssh 설정 그대로)</option>${ssh.keys.map((k) => `<option value="${esc(k.path)}"${v.sshKey === k.path ? ' selected' : ''}>${esc(k.name)}${k.comment ? ', ' + esc(k.comment) : ''}</option>`).join('')}</select></label>
     <div class="set-out" id="pf-out"></div>
     <div class="btns"><button class="btn" id="m-cancel">취소</button><button class="btn primary" id="pf-save">저장</button></div></div>`;
   modalResolve = () => {};
@@ -2804,7 +2803,7 @@ function renderAi() {
   el.hidden = !P.aiUsage || !ps.length;
   if (el.hidden) return;
   el.innerHTML = ps.map((p) => {
-    if (p.state !== 'ok') return `<span class="ai-p" title="${esc(p.name)}: ${p.state === 'expired' ? '로그인이 만료됐어요 — CLI 를 한 번 실행하면 갱신됩니다' : esc(p.error || '확인 실패')}">${icon('bot')}${esc(p.name)} <span class="ai-off">${p.state === 'expired' ? '만료' : '?'}</span></span>`;
+    if (p.state !== 'ok') return `<span class="ai-p" title="${esc(p.name)}: ${p.state === 'expired' ? '로그인이 만료됐어요, CLI 를 한 번 실행하면 갱신됩니다' : esc(p.error || '확인 실패')}">${icon('bot')}${esc(p.name)} <span class="ai-off">${p.state === 'expired' ? '만료' : '?'}</span></span>`;
     if (!p.windows.length) return `<span class="ai-p">${icon('bot')}${esc(p.name)} <span class="ai-off">0%</span></span>`;
     return `<span class="ai-p">${icon('bot')}${esc(p.name)}${p.windows.slice(0, 2).map((w) => `<span class="ai-w ${aiLevel(w.pct)}" title="${esc(p.name)} ${esc(w.label)} 한도의 ${w.pct}% 사용 · ${esc(resetText(w.resetsAt))}"><i>${esc(w.label)}</i><span class="ai-bar"><b style="width:${w.pct}%"></b></span>${w.pct}%</span>`).join('')}</span>`;
   }).join('');
@@ -2815,7 +2814,7 @@ function aiPopover() {
   showMenu([
     { head: `AI 사용량 · ${AI.data ? relDate(AI.data.at / 1000) : ''} 확인` },
     ...ps.flatMap((p) => p.state !== 'ok'
-      ? [{ label: `${p.name} — ${p.state === 'expired' ? '로그인 만료 (CLI 를 한 번 실행하세요)' : '확인 실패'}`, icon: 'bot', disabled: true, run() {} }]
+      ? [{ label: `${p.name}, ${p.state === 'expired' ? '로그인 만료 (CLI 를 한 번 실행하세요)' : '확인 실패'}`, icon: 'bot', disabled: true, run() {} }]
       : [{ head: `${p.name}${p.plan ? ' · ' + p.plan : ''}` }, ...(p.windows.length ? p.windows : [{ label: '사용량', pct: 0 }]).map((w) => ({ label: `${w.label}  ${w.pct}%`, hint: resetText(w.resetsAt), icon: 'zap', run() {} }))]),
     '-',
     { label: '지금 새로고침', icon: 'refresh', run: () => refreshAi(true) },
@@ -2921,7 +2920,7 @@ async function termNew() {
   const ws = new WebSocket(`ws://${location.host}/api/term?${new URLSearchParams({ repo, cols: xt.cols, rows: xt.rows, ...(P.termShell ? { shell: P.termShell } : {}) })}`);
   t.ws = ws;
   ws.onmessage = (e) => xt.write(e.data);
-  ws.onclose = () => { t.alive = false; xt.write('\r\n\x1b[2m[프로세스 종료 — 이 탭을 닫거나 + 로 새 터미널]\x1b[0m\r\n'); renderTermTabs(); };
+  ws.onclose = () => { t.alive = false; xt.write('\r\n\x1b[2m[프로세스 종료, 이 탭을 닫거나 + 로 새 터미널]\x1b[0m\r\n'); renderTermTabs(); };
   xt.onData((d) => ws.readyState === 1 && ws.send(d));
   xt.onResize(({ cols, rows }) => ws.readyState === 1 && ws.send('\x00\x01R' + JSON.stringify({ cols, rows })));
   xt.onTitleChange((title) => { t.title = title.split(/[\\/]/).pop() || t.title; renderTermTabs(); });

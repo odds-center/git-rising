@@ -28,7 +28,7 @@
         <button class="tb" data-act="newbranch" data-tip="현재 위치에서 새 브랜치|git checkout -b"><i data-i="branch-plus"></i><span>브랜치</span></button>
         <button class="tb" data-act="stash" data-tip="커밋 안 한 변경을 임시 보관|git stash push -u"><i data-i="archive"></i><span>스태시</span></button>
         <button class="tb" data-act="pop" data-tip="가장 최근 스태시를 다시 꺼내기|git stash pop"><i data-i="unarchive"></i><span>꺼내기</span><b class="cnt" id="cnt-stash" hidden></b></button>
-        <button class="tb caret" data-menu="stash" data-tip="스태시 목록 — 골라서 적용 · 삭제"><i data-i="chev-down"></i></button>
+        <button class="tb caret" data-menu="stash" data-tip="스태시 목록, 골라서 적용 · 삭제"><i data-i="chev-down"></i></button>
       </div>
       <div class="grp">
         <button class="tb" data-act="undo" data-tip="방금 한 작업 되돌리기 (⌘Z)"><i data-i="undo"></i><span>되돌리기</span></button>
@@ -36,7 +36,7 @@
       </div>
       <div class="grp">
         <button class="tb icon-only" data-act="head" data-tip="현재 체크아웃 위치로 이동 (Shift+H)"><i data-i="checkout"></i></button>
-        <button class="tb icon-only" data-act="find" data-tip="커밋 검색 — 전체 히스토리 (⌘F)"><i data-i="search"></i></button>
+        <button class="tb icon-only" data-act="find" data-tip="커밋 검색, 전체 히스토리 (⌘F)"><i data-i="search"></i></button>
         <button class="tb icon-only" data-act="remotes" data-tip="원격 브랜치 표시 / 숨기기"><i data-i="cloud"></i></button>
         <button class="tb icon-only" data-act="reload" data-tip="새로고침 (⌘R)"><i data-i="rotate"></i></button>
       </div>
@@ -59,7 +59,7 @@
     <aside id="sidebar">
       <button id="sb-repo" title="저장소 바꾸기 (⌘O)">
         <span class="repo-ic"></span>
-        <span class="repo-tx"><b id="sb-repo-name">—</b><small id="sb-repo-path"></small></span>
+        <span class="repo-tx"><b id="sb-repo-name"></b><small id="sb-repo-path"></small></span>
         <i data-i="chevrons"></i>
       </button>
       <button id="sb-branch" title="브랜치 전환 / 원격과 맞추기"></button>
@@ -97,7 +97,7 @@
           <label class="chk"><input type="checkbox" id="diff-wrap"> 줄바꿈</label>
         </div>
         <div id="diff-body"></div>
-        <div id="diff-ruler" title="같은 단어가 있는 위치 — 눌러서 이동"></div>
+        <div id="diff-ruler" title="같은 단어가 있는 위치, 눌러서 이동"></div>
       </div>
       <div id="empty" hidden></div>
       <div id="loading" hidden>
@@ -130,7 +130,7 @@
     <span class="grow"></span>
     <span id="sb-loading" class="muted"></span>
     <span id="sb-count" class="muted"></span>
-    <button id="sb-ai" hidden title="AI 사용량 — 눌러서 자세히"></button>
+    <button id="sb-ai" hidden title="AI 사용량, 눌러서 자세히"></button>
     <button id="sb-update" hidden></button>
     <button id="sb-theme" class="ib" title="테마 전환"></button>
     <button id="sb-settings" class="ib" title="설정 (SSH · 저장소 찾기 · 업데이트)"><i data-i="settings"></i></button>

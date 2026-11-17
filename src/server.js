@@ -778,7 +778,7 @@ const actions = {
     const target = list.find((p) => path.resolve(p) === path.resolve(String(wtPath || '')));
     if (!target) throw httpError(404, '그런 워크트리가 없어요');
     if (target === list[0]) throw httpError(400, '원래 저장소 폴더는 지울 수 없어요');
-    if (path.resolve(target) === path.resolve(repo)) throw httpError(400, '지금 보고 있는 워크트리는 지울 수 없어요 — 다른 탭에서 지우세요');
+    if (path.resolve(target) === path.resolve(repo)) throw httpError(400, '지금 보고 있는 워크트리는 지울 수 없어요, 다른 탭에서 지우세요');
     await git(repo, ['worktree', 'remove', ...(force ? ['--force'] : []), target]);
     await git(repo, ['worktree', 'prune']).catch(() => {});
     return `워크트리 ${path.basename(target)} 를 지웠어요`;
@@ -1269,7 +1269,7 @@ async function shellToolsAction(body) {
     } else if (/^\s*source\s+.*oh-my-zsh\.sh/m.test(rc)) rc = rc.replace(/^(\s*source\s+.*oh-my-zsh\.sh.*)$/m, `${line}  # Git Rising: oh-my-zsh 업데이트 방식\n$1`);
     else throw httpError(409, '.zshrc 에서 oh-my-zsh 를 불러오는 줄을 찾지 못했어요');
     writeZshrc(rc);
-    return { output: `oh-my-zsh 업데이트 방식: ${body.mode} — 새 터미널부터 적용됩니다.` };
+    return { output: `oh-my-zsh 업데이트 방식: ${body.mode}, 새 터미널부터 적용됩니다.` };
   }
   if (act === 'omzUpdate') {
     if (!fs.existsSync(path.join(OMZ, 'tools', 'upgrade.sh'))) throw httpError(409, 'oh-my-zsh 가 설치돼 있지 않아요');
@@ -1283,7 +1283,7 @@ async function shellToolsAction(body) {
       for (const n of names) {
         const dir = path.join(OMZ_CUSTOM, kind, n);
         if (!fs.existsSync(path.join(dir, '.git'))) continue;
-        const res = await git(dir, ['pull', '--ff-only', '--quiet']).then(() => '최신', (e) => '실패 — ' + e.message.split('\n')[0]);
+        const res = await git(dir, ['pull', '--ff-only', '--quiet']).then(() => '최신', (e) => '실패, ' + e.message.split('\n')[0]);
         out.push(`${n}: ${res}`);
       }
     }

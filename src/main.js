@@ -91,7 +91,7 @@ function mcpInfo() {
     execFile(file, args, { timeout: 30000 }, (err, stdout, stderr) => {
       const out = `${stdout || ''}${stderr || ''}`.trim();
       if (err && !/added|already/i.test(out)) reject(new Error(out || err.message + '\n(claude CLI 가 설치돼 있는지 확인하세요)'));
-      else resolve(out || '등록 완료 — Claude Code 를 다시 시작하면 git-rising 도구가 보여요');
+      else resolve(out || '등록 완료, Claude Code 를 다시 시작하면 git-rising 도구가 보여요');
     });
   });
   return { command, json, install };
