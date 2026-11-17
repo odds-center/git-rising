@@ -752,7 +752,7 @@ function fileListHTML(files, startIdx = 0) {
     const n = f.add != null ? `<span class="n"><span class="a">+${f.add}</span> <span class="d">−${f.del}</span></span>` : KIND_LABEL[k] ? `<span class="kind">${KIND_LABEL[k]}</span>` : '';
     const p = short ? `<bdi>${escN(base)}</bdi>` : `<bdi><span class="dir">${escN(dir)}</span>${escN(base)}</bdi>`;
     const [fic, fcol] = fileIcon(f.path);
-    return `<div class="file" data-fi="${i + startIdx}" title="${esc(f.oldPath ? f.oldPath + ' → ' + f.path : f.path)}"><span class="st st-${esc(f.status)}">${sym[f.status] || f.status}</span><span class="fic" style="color:${fcol}">${icon(fic)}</span><span class="p">${p}</span>${n}</div>`;
+    return `<div class="file${!$('#diff-view').hidden && S.diffFile === f ? ' selected' : ''}" data-fi="${i + startIdx}" title="${esc(f.oldPath ? f.oldPath + ' → ' + f.path : f.path)}"><span class="st st-${esc(f.status)}">${sym[f.status] || f.status}</span><span class="fic" style="color:${fcol}">${icon(fic)}</span><span class="p">${p}</span>${n}</div>`;
   };
   if (S.fileView === 'tree') {
     const groups = new Map();
@@ -877,7 +877,7 @@ async function openDiff(fi) {
   const f = S.detailFiles?.[fi];
   if (!f) return;
   S.diffFile = f; S.diffPatch = null;
-  document.querySelectorAll('#detail .file').forEach((e) => e.classList.toggle('selected', +e.dataset.fi === fi));
+  document.querySelectorAll('#detail .file').forEach((e) => { const on = +e.dataset.fi === fi; e.classList.toggle('selected', on); if (on) e.scrollIntoView({ block: 'nearest' }); });
   $('#diff-view').hidden = false;
   const k = kindOf(f.path);
   const textish = ['text', 'md'].includes(k) || /\.(svg|csv|tsv)$/i.test(f.path);
@@ -2238,7 +2238,7 @@ function bind() {
     if (e.target.closest('[data-st-close]')) { S.detail = null; closeDiff(); return renderDetail(); }
     if (e.target.closest('[data-st-fold]')) { S.collapsed.has('stash-panel') ? S.collapsed.delete('stash-panel') : S.collapsed.add('stash-panel'); LS.set('collapsed', [...S.collapsed]); return renderDetail(); }
     const si = e.target.closest('[data-st]'); if (si) return openStash(+si.dataset.st);
-    const f = e.target.closest('.file'); if (f) return openDiff(+f.dataset.fi);
+    const f = e.target.closest('.file'); if (f) { S.focusZone = 'files'; return openDiff(+f.dataset.fi); }
     const g = e.target.closest('[data-goto]'); if (g) return selectCommit(g.dataset.goto);
     const cp = e.target.closest('[data-copy]'); if (cp) return copy(cp.dataset.copy);
     const fv = e.target.closest('[data-fv]'); if (fv) { S.fileView = fv.dataset.fv; LS.set('fileView', S.fileView); renderDetail(); }
@@ -2400,6 +2400,17 @@ function bind() {
     if (e.key === '?') { showShortcuts(); return; }
     if (e.key === 'H') { if (S.info?.head) selectCommit(S.info.head); return; }
     if (e.key === 'Enter' && S.selected && S.detailFiles?.length) { openDiff(0); return; }
+    // arrow keys follow where you last clicked: the file list moves between files, the code view scrolls
+    if (S.focusZone === 'diff' && !$('#diff-view').hidden && /^(Arrow|Page|Home|End)/.test(e.key)) return;
+    if (S.focusZone === 'files' && S.detailFiles?.length && /^(ArrowDown|ArrowUp|j|k|Enter)$/.test(e.key)) {
+      e.preventDefault();
+      const els = [...document.querySelectorAll('#detail .file')]; // DOM order (folder view sorts differently)
+      const cur = els.findIndex((x) => S.detailFiles[+x.dataset.fi] === S.diffFile);
+      const step = e.key === 'Enter' ? 0 : e.key === 'ArrowDown' || e.key === 'j' ? 1 : -1;
+      const next = els[Math.max(0, Math.min(els.length - 1, cur < 0 ? 0 : cur + step))];
+      if (next) openDiff(+next.dataset.fi);
+      return;
+    }
     const v = vIndex(S.selected);
     const go = (n) => { n = Math.max(0, Math.min(viewLen() - 1, n)); if (viewLen()) selectCommit(rowAt(n).sha); };
     if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); go(v < 0 ? 0 : v + 1); }
@@ -2407,6 +2418,12 @@ function bind() {
     if (e.key === 'PageDown') { e.preventDefault(); go(v + Math.floor(sc.clientHeight / ROW)); }
     if (e.key === 'PageUp') { e.preventDefault(); go(v - Math.floor(sc.clientHeight / ROW)); }
   });
+  document.addEventListener('mousedown', (e) => {
+    const t = /** @type {Element} */ (e.target);
+    if (t.closest?.('#detail .file')) S.focusZone = 'files';
+    else if (t.closest?.('#diff-body')) S.focusZone = 'diff';
+    else if (t.closest?.('#graph-scroll, #sidebar')) S.focusZone = 'graph';
+  }, true);
   document.querySelectorAll('.resizer').forEach((rz) => {
     const target = $('#' + rz.dataset.target);
     const saved = LS.get('w.' + rz.dataset.target);
