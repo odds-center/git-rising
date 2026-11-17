@@ -778,3 +778,5 @@ body.dragging-ref, body.dragging-ref * { cursor: grabbing !important; user-selec
 .del-o.locked { opacity: .55; cursor: default; }
 .del-o.force { background: transparent; box-shadow: none; padding-top: 4px; }
 .pill svg { flex: none; }
+.tab.flash { animation: tab-flash .9s ease-out; }
+@keyframes tab-flash { 0% { background: var(--sel); box-shadow: 0 0 0 2px var(--sel-line); } 100% { background: var(--elev2); box-shadow: 0 0 0 1px var(--border); } }
