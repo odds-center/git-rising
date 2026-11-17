@@ -41,13 +41,28 @@ const DENSITY = { compact: 21, normal: 24, comfy: 28 };
 const COL_DEF = { ref: 160, graph: 0, author: 110, date: 84, sha: 72 }; // graph 0 = auto
 const COL_MIN = { ref: 60, graph: 28, author: 48, date: 48, sha: 40 };
 const CW = Object.assign({}, COL_DEF, LS.get('cols', {}));
-// Graph palettes. On dark backgrounds saturated colours glare, so the dark themes use softer tones.
-const LANES = {
-  // ordered so that neighbouring lanes never share a hue: blue, orange, green, pink, cyan, yellow, violet, red, sky, lime
-  light: ['#3f6fe0', '#e0661f', '#1f9d63', '#d6409a', '#1295ad', '#b9860f', '#8a55e6', '#d64560', '#2f8fd6', '#6a9a1f'],
-  soft: ['#7da2f5', '#f0a070', '#72cf9e', '#ea8fc4', '#63c6d8', '#e3c467', '#b596f2', '#ee8a98', '#7fbdf0', '#a9cf74'],
-  deep: ['#6b8cff', '#ff8a4c', '#3ec486', '#ef62b0', '#2db7cc', '#f2b740', '#b07aff', '#f0566f', '#62aef7', '#9bd14a'],
+// Graph palettes — generated, so every lane gets its own colour (120 of them before the cycle repeats).
+// Hue advances by the golden angle, which puts neighbouring lanes far apart on the colour wheel; lightness and
+// chroma step through three tiers so lanes that land on a similar hue still differ. OKLCH keeps them equally vivid.
+const LANE_COUNT = 120;
+function oklchHex(L, C, hDeg) {
+  const h = (hDeg * Math.PI) / 180;
+  const lin = (c) => {
+    const a = c * Math.cos(h), b = c * Math.sin(h);
+    const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s2 = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+    return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s2, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s2, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s2];
+  };
+  let c = C, rgb = lin(c);
+  while (c > 0.01 && rgb.some((v) => v < -0.001 || v > 1.001)) { c -= 0.01; rgb = lin(c); } // pull into sRGB, keeping hue and lightness
+  return '#' + rgb.map((v) => { const x = Math.min(1, Math.max(0, v)); return Math.round(255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055)).toString(16).padStart(2, '0'); }).join('');
+}
+const TONES = { // [lightness, chroma] × 3 tiers
+  light: [[0.58, 0.17], [0.48, 0.15], [0.66, 0.15]],
+  soft: [[0.76, 0.13], [0.68, 0.15], [0.84, 0.11]],
+  deep: [[0.72, 0.18], [0.63, 0.19], [0.81, 0.15]],
 };
+const makeLanes = (tone) => Array.from({ length: LANE_COUNT }, (_, i) => { const [L, C] = TONES[tone][i % 3]; return oklchHex(L, C, (255 + i * 137.508) % 360); });
+const LANES = { light: makeLanes('light'), soft: makeLanes('soft'), deep: makeLanes('deep') };
 let COLORS = LANES.soft;
 const laneColor = (i) => COLORS[i % COLORS.length];
 const home = () => S.homeDir || '';
@@ -477,6 +492,7 @@ let poolSize = 0;
 function fillRow(el, v) {
   const c = rowAt(v);
   const col = c.wip ? laneColor(headCol()) : laneColor(S.L.rows[v - S.off].col);
+  el.style.setProperty('--lc', col);
   let ref = '';
   if (!c.wip) {
     const labels = refLabels(c.sha);
@@ -553,6 +569,19 @@ function drawGraph(first, last) {
   const LW = P.avatars ? 2.2 : 2;
   g.lineWidth = LW; g.lineCap = 'round'; g.lineJoin = 'round';
   const off = S.off;
+  // GitKraken-style row guides: a thin lane-coloured line from each commit to the message column, and a solid
+  // one from its branch label. Drawn first so the lanes run over them.
+  g.lineWidth = 1;
+  for (let v = first; v <= last; v++) {
+    const c = rowAt(v);
+    const col = c.wip ? headCol() : S.L.rows[v - off].col;
+    const y = Math.round(Y(v)) + 0.5;
+    g.strokeStyle = laneColor(col);
+    g.globalAlpha = 0.28;
+    g.beginPath(); g.moveTo(X(col), y); g.lineTo(x0 + S.graphW, y); g.stroke();
+    if (!c.wip && S.refsBySha.has(c.sha)) { g.globalAlpha = 0.75; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x0, y); g.lineTo(X(col), y); g.stroke(); g.lineWidth = 1; }
+  }
+  g.globalAlpha = 1; g.lineWidth = LW;
   // edges between commit rows — pass 0: straight segments, pass 1: bends (drawn over a background-coloured
   // halo, so where a merge line crosses another lane the two stay visually separate)
   const cFirst = Math.max(0, first - off - 1), cLast = Math.min(S.commits.length - 1, last - off);
@@ -623,16 +652,6 @@ function drawGraph(first, last) {
     g.lineWidth = LW;
   }
   g.restore();
-  // ref connector
-  g.globalAlpha = 0.6; g.lineWidth = 1.2; g.setLineDash([2, 3]);
-  for (let v = first; v <= last; v++) {
-    const c = rowAt(v);
-    if (c.wip || !S.refsBySha.has(c.sha)) continue;
-    const col = S.L.rows[v - off].col;
-    g.strokeStyle = laneColor(col);
-    g.beginPath(); g.moveTo(x0 - 2, Y(v)); g.lineTo(X(col) - NODE_R - 5, Y(v)); g.stroke();
-  }
-  g.globalAlpha = 1; g.setLineDash([]);
 }
 
 // ================================================================ popover: every branch / tag on a commit

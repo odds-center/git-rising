@@ -724,3 +724,6 @@ select.field { appearance: none; -webkit-appearance: none; height: 32px; color: 
 #diff-ruler i:hover { height: 5px; margin-top: -1px; background: #ffd966; }
 #word-count { margin-left: 8px; padding: 0 8px; border-radius: 9px; font: 600 11px/18px var(--sans); color: #6b4e00; background: #f5c84b; white-space: nowrap; }
 #word-count[hidden] { display: none; }
+
+/* GitKraken-style: the message column starts with a bar in the commit's lane colour */
+.row > .c-msg { box-shadow: inset 2px 0 0 var(--lc, transparent); background: linear-gradient(90deg, color-mix(in srgb, var(--lc, transparent) 13%, transparent), transparent 140px); }
