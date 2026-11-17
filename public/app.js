@@ -1461,16 +1461,17 @@ const findRef = (key) => { const i = key.indexOf(':'); const t = key.slice(0, i)
 // ================================================================ tabs / bars
 function saveTabs() { LS.set('tabs', S.tabs); LS.set('active', S.repo); }
 function isWorktreePath(p) { return (S.repos?.repos || []).some((r) => (r.worktrees || []).some((w) => w.path === p)) || (p === S.repo && !!S.info?.worktree); }
+let lastTabRepo = null; // repo shown at the previous renderTabs, to notice tab switches
 function renderTabs() {
   $('#tab-list').innerHTML = S.tabs.map((t) => `<div class="tab${t === S.repo ? ' active' : ''}" data-tab="${esc(t)}" title="${esc(tilde(t))}">${logoHTML(t, 'repo-ic tab-ic')}${isWorktreePath(t) ? `<span class="tab-wt" title="워크트리">${icon('tree')}</span>` : ''}<span>${escN(t.split(/[\\/]/).pop())}</span><span class="x" data-close="${esc(t)}">${icon('x')}</span></div>`).join('');
   document.title = S.info ? `${S.info.name} - Git Rising` : 'Git Rising';
   // the active tab may sit off-screen in a long strip: bring it into view, and flash it when the repo changed
   const act = $('#tab-list .tab.active');
-  if (act && renderTabs.last !== S.repo) { // only when the repo changed, so a refresh doesn't undo a manual scroll
-    act.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: renderTabs.last ? 'smooth' : 'auto' });
-    if (renderTabs.last) { act.classList.add('flash'); setTimeout(() => act.classList.remove('flash'), 900); }
+  if (act && lastTabRepo !== S.repo) { // only when the repo changed, so a refresh doesn't undo a manual scroll
+    act.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: lastTabRepo ? 'smooth' : 'auto' });
+    if (lastTabRepo) { act.classList.add('flash'); setTimeout(() => act.classList.remove('flash'), 900); }
   }
-  renderTabs.last = S.repo;
+  lastTabRepo = S.repo;
 }
 function renderActions() {
   const cur = S.refs.find((r) => r.type === 'branch' && r.name === S.info?.branch);
