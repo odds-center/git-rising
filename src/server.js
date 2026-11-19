@@ -278,7 +278,7 @@ async function apiLog(q) {
   const repo = await resolveRepo(q.repo);
   const skip = Math.max(0, parseInt(q.skip) || 0);
   const limit = Math.min(5000, Math.max(1, parseInt(q.limit) || 200));
-  const order = q.order === 'date' ? '--date-order' : '--topo-order';
+  const order = q.order === 'topo' ? '--topo-order' : '--author-date-order'; // newest first by the date shown in the list (parents still below children)
   let revs = ['--branches', ...(q.remotes === '0' ? [] : ['--remotes']), '--tags'];
   if (await hasHead(repo)) revs.push('HEAD');
   if (q.refs) {

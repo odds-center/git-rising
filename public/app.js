@@ -27,11 +27,13 @@ let ROW = 24, LANE = 14, PAD = 10, NODE_R = 4;
 // ---------------------------------------------------------------- preferences (설정)
 const PREF_DEF = {
   theme: LS.get('theme', 'dark'), darkTone: 'soft', accent: 'indigo', fontSize: 13, density: 'normal', dateMode: 'relative',
-  avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'topo', colAuthor: true, colDate: true, colSha: true,
+  avatars: true, avatarPhotos: true, gravatar: false, repoLogos: true, diffMode: 'unified', showRemotes: true, showTags: true, order: 'date', colAuthor: true, colDate: true, colSha: true,
   autoFetch: 5, autoPull: true, pullMode: 'default', stashUntracked: true, confirmPush: false, fetchPrune: true,
   aiUsage: false, termShell: '', termFont: 12, restoreTabs: true, openDiffOnSelect: false,
 };
 const P = Object.assign({}, PREF_DEF, LS.get('prefs', {}));
+// one-time: time order (like GitKraken) became the default in 0.2.30
+if (!LS.get('m0230')) { P.order = 'date'; LS.set('prefs', P); LS.set('m0230', 1); }
 // one-time: periodic sync (fetch + safe fast-forward) became the default in 0.2.22
 if (!LS.get('m0222')) { if (!P.autoFetch) P.autoFetch = 5; P.autoPull = true; LS.set('prefs', P); LS.set('m0222', 1); }
 // one-time: profile photos / avatars became the default in 0.2.1
@@ -2151,7 +2153,7 @@ async function settingsBody(sec) {
     ${optRow('저장소 로고', '저장소 안의 로고 파일 → 없으면 GitHub 조직/소유자 이미지', optToggle('repoLogos'))}
     ${optRow('원격 브랜치 표시', '끄면 origin/* 은 그래프에서 숨김 (사이드바엔 그대로)', optToggle('showRemotes'))}
     ${optRow('태그 표시', '', optToggle('showTags'))}
-    ${optRow('커밋 순서', '위상 순서는 브랜치가 덜 엉켜 보여요', optSeg('order', [['topo', '위상 순서'], ['date', '날짜 순서']]))}
+    ${optRow('커밋 순서', '날짜 순서는 최신 커밋이 위로, 위상 순서는 브랜치별로 묶여서 덜 엉켜 보여요', optSeg('order', [['date', '날짜 순서'], ['topo', '위상 순서']]))}
     ${optRow('작성자 컬럼', '', optToggle('colAuthor'))}
     ${optRow('날짜 컬럼', '', optToggle('colDate'))}
     ${optRow('SHA 컬럼', '', optToggle('colSha'))}
