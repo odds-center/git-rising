@@ -483,6 +483,8 @@ function refLabels(sha) {
   S.labelCache.set(sha, out);
   return out;
 }
+// the list shows the commit date (it matches the order); when a rebase / cherry-pick kept an older author date, say so
+const dateTip = (c) => (c.ctime && Math.abs(c.ctime - c.time) > 60 ? `커밋 ${fmtDate(c.ctime)}\n작성 ${fmtDate(c.time)} (리베이스 등으로 옮겨진 커밋)` : fmtDate(c.time));
 function pillHTML(r, color) {
   const isHead = r.type === 'branch' && r.name === S.info?.branch;
   const wt = r.type === 'branch' && !isHead ? otherWorktree(r.name) : null; // checked out in another worktree
@@ -507,7 +509,7 @@ function fillRow(el, v) {
   }
   el.innerHTML = c.wip
     ? `<div class="c-ref"></div><div class="c-graph"></div><div class="c-msg"><span class="wip">커밋 안 한 변경 ${S.status.length}개</span></div><div></div><div></div><div></div>`
-    : `<div class="c-ref">${ref}</div><div class="c-graph"></div><div class="c-msg">${c.sha === S.info?.head ? `<span class="here" title="지금 체크아웃된 위치 (HEAD)">${icon('checkout')}현재 위치</span>` : ''}${worktreesAt(c.sha).map((w) => `<span class="wt-at" data-open-wt="${esc(w.path)}" title="워크트리 '${esc(w.path.split(/[\\/]/).pop())}' 가 여기를 체크아웃하고 있어요${w.branch ? ' (' + esc(w.branch) + ')' : ''}\n눌러서 탭으로 열기">${icon('tree')}${escN(w.path.split(/[\\/]/).pop())}</span>`).join('')}${escN(c.subject)}</div><div class="c-author">${escN(c.author)}</div><div class="c-date" title="${fmtDate(c.time)}">${P.dateMode === 'absolute' ? fmtDate(c.time).slice(2) : relDate(c.time)}</div><div class="c-sha">${c.sha.slice(0, 7)}</div>`;
+    : `<div class="c-ref">${ref}</div><div class="c-graph"></div><div class="c-msg">${c.sha === S.info?.head ? `<span class="here" title="지금 체크아웃된 위치 (HEAD)">${icon('checkout')}현재 위치</span>` : ''}${worktreesAt(c.sha).map((w) => `<span class="wt-at" data-open-wt="${esc(w.path)}" title="워크트리 '${esc(w.path.split(/[\\/]/).pop())}' 가 여기를 체크아웃하고 있어요${w.branch ? ' (' + esc(w.branch) + ')' : ''}\n눌러서 탭으로 열기">${icon('tree')}${escN(w.path.split(/[\\/]/).pop())}</span>`).join('')}${escN(c.subject)}</div><div class="c-author">${escN(c.author)}</div><div class="c-date" title="${dateTip(c)}">${P.dateMode === 'absolute' ? fmtDate(c.ctime || c.time).slice(2) : relDate(c.ctime || c.time)}</div><div class="c-sha">${c.sha.slice(0, 7)}</div>`;
 }
 function headCol() { const i = S.index.get(S.info?.head); return i == null ? 0 : S.L.rows[i].col; }
 

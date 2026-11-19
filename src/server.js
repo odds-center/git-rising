@@ -278,7 +278,9 @@ async function apiLog(q) {
   const repo = await resolveRepo(q.repo);
   const skip = Math.max(0, parseInt(q.skip) || 0);
   const limit = Math.min(5000, Math.max(1, parseInt(q.limit) || 200));
-  const order = q.order === 'topo' ? '--topo-order' : '--author-date-order'; // newest first by the date shown in the list (parents still below children)
+  // newest first by commit date (what the list shows), parents still below children. Not author date: a rebased
+  // commit keeps its old author date, and since its parent must sit below it, that would sink the parent too.
+  const order = q.order === 'topo' ? '--topo-order' : '--date-order';
   let revs = ['--branches', ...(q.remotes === '0' ? [] : ['--remotes']), '--tags'];
   if (await hasHead(repo)) revs.push('HEAD');
   if (q.refs) {
@@ -292,7 +294,7 @@ async function apiLog(q) {
     'log',
     ...revs,
     order,
-    `--format=${RECORD}%H%x00%P%x00%an%x00%ae%x00%at%x00%s`,
+    `--format=${RECORD}%H%x00%P%x00%an%x00%ae%x00%at%x00%ct%x00%s`,
     `--skip=${skip}`,
     `-n${limit + 1}`,
   ]);
@@ -300,8 +302,8 @@ async function apiLog(q) {
     .split(RECORD)
     .filter(Boolean)
     .map((rec) => {
-      const [sha, parents, author, email, time, subject] = rec.replace(/\n$/, '').split(FIELD);
-      return { sha, parents: parents ? parents.split(' ') : [], author, email, time: Number(time), subject };
+      const [sha, parents, author, email, time, ctime, subject] = rec.replace(/\n$/, '').split(FIELD);
+      return { sha, parents: parents ? parents.split(' ') : [], author, email, time: Number(time), ctime: Number(ctime), subject };
     });
   const hasMore = commits.length > limit;
   if (hasMore) commits.pop();
