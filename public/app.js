@@ -416,6 +416,7 @@ async function refreshStatus() {
   if (hadWip !== S.off) relayout(); else { S.ver++; renderRows(); }
   renderBanner(); renderActions();
   if (S.detail?.wip) { if (S.off) renderDetail(); else { S.selected = null; S.detail = null; renderDetail(); } }
+  else if (!S.selected && !S.detail && S.off) renderDetail(); // changes just appeared → show them
 }
 
 function setLoading(t) { $('#sb-loading').textContent = t; }
@@ -823,7 +824,10 @@ function stashAction(action, index) {
 }
 
 function renderDetail() {
-  const el = $('#detail'), d = S.detail;
+  const el = $('#detail');
+  // nothing selected but there are uncommitted changes: show them (like GitKraken), not an empty panel
+  if (!S.detail && !S.selected && S.off && S.status.length) { S.selected = 'WIP'; S.detail = { wip: true }; renderRows(); }
+  const d = S.detail;
   if (!d) { el.innerHTML = `<div class="placeholder">커밋을 선택하세요<br><br><kbd>↑</kbd> <kbd>↓</kbd> 로 이동 · 우클릭으로 작업</div>${stashSectionHTML()}`; return; }
   if (d.stash) {
     const st = d.stash;
