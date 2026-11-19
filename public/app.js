@@ -1246,12 +1246,25 @@ function renderSplit(patch, truncated, f) {
   b.addEventListener('scroll', sync(b, a), { passive: true });
 }
 function renderFull(text, patch, f, side) {
-  const changed = new Set(parsePatch(patch || '').filter((r) => (side === 'new' ? r.type === 'add' : r.type === 'del')).map((r) => (side === 'new' ? r.n : r.o)));
+  const prow = parsePatch(patch || '');
+  const changed = new Set(prow.filter((r) => (side === 'new' ? r.type === 'add' : r.type === 'del')).map((r) => (side === 'new' ? r.n : r.o)));
+  // lines removed from the other side leave no line here: mark the line they sat before (red edge + red in the overview)
+  const gone = new Set();
+  { let n = 0, o = 0, pend = false;
+    for (const r of prow) {
+      if (r.type === 'hunk') { pend = false; continue; }
+      if (r.n != null) n = r.n; if (r.o != null) o = r.o;
+      const other = side === 'new' ? r.type === 'del' : r.type === 'add';
+      if (other) { pend = true; continue; }
+      if (pend && r.type !== 'meta') { gone.add(side === 'new' ? n : o); pend = false; }
+    }
+    if (pend) gone.add((side === 'new' ? n : o) + 1);
+  }
   const lines = hlLines(text.replace(/\n$/, ''), langOf(f.path));
   const MAX = 20000;
   const cls = side === 'new' ? 'add' : 'del';
   const body = $('#diff-body');
-  body.innerHTML = '<div class="dwrap">' + lines.slice(0, MAX).map((l, i) => `<div class="fl${changed.has(i + 1) ? ' ' + cls : ''}" ${changed.has(i + 1) ? 'data-chg' : ''}><span class="ln">${i + 1}</span><span class="tx">${l || ' '}</span></div>`).join('') + '</div>'
+  body.innerHTML = '<div class="dwrap">' + lines.slice(0, MAX).map((l, i) => `<div class="fl${changed.has(i + 1) ? ' ' + cls : ''}${gone.has(i + 1) ? ' gone' : ''}" ${changed.has(i + 1) ? 'data-chg' : ''}><span class="ln">${i + 1}</span><span class="tx">${l || ' '}</span></div>`).join('') + '</div>'
     + (lines.length > MAX ? `<div class="diff-note">${lines.length.toLocaleString()}줄 중 ${MAX.toLocaleString()}줄까지 표시</div>` : '');
   // jump to the first changed line
   const first = body.querySelector('[data-chg]');
@@ -1374,6 +1387,39 @@ function markSameWord() {
   }).join('');
   const c = $('#word-count');
   if (c) { c.hidden = false; c.textContent = `같은 단어 ${ranges.length}곳`; c.title = needle; }
+}
+// ---- overview of the whole diff in the scrollbar track: red = removed, green = added (like an editor minimap)
+function buildChangeMap() {
+  const body = $('#diff-body');
+  if (!body || $('#diff-view').hidden) return;
+  const scs = body.classList.contains('panes') ? [...body.querySelectorAll('.pane')] : [body];
+  for (const sc of scs) {
+    const H = sc.scrollHeight;
+    if (!H || H <= sc.clientHeight + 2) { sc.style.removeProperty('--chg-map'); continue; }
+    const top0 = sc.getBoundingClientRect().top - sc.scrollTop;
+    /** @type {[string, number, number][]} */
+    const blocks = [];
+    for (const el of sc.querySelectorAll('.dl.add,.dl.del,.fl.add,.fl.del,.fl.gone,.pl.add,.pl.del,.sl .tx.add,.sl .tx.del')) {
+      const t = el.classList.contains('add') ? 'add' : 'del';
+      const r = el.getBoundingClientRect();
+      if (el.classList.contains('gone') && !el.classList.contains('add') && !el.classList.contains('del')) { // removed lines: a short red tick just above
+        const a = ((r.top - top0) / H) * 100; blocks.push(['del', a, a]); continue;
+      }
+      const a = ((r.top - top0) / H) * 100, b = ((r.bottom - top0) / H) * 100;
+      const last = blocks[blocks.length - 1];
+      if (last && last[0] === t && a - last[2] < 0.15) last[2] = Math.max(last[2], b); else blocks.push([t, a, b]);
+      if (blocks.length > 600) break;
+    }
+    if (!blocks.length) { sc.style.removeProperty('--chg-map'); continue; }
+    const col = { add: 'var(--add)', del: 'var(--del)' };
+    const minH = (3 / Math.max(1, sc.clientHeight)) * 100; // at least 3px on screen
+    const stops = [];
+    for (const [t, a, b0] of blocks) {
+      const b = Math.max(b0, a + minH); // keep a one-line change visible on a long file
+      stops.push(`transparent ${a.toFixed(2)}%`, `${col[t]} ${a.toFixed(2)}%`, `${col[t]} ${b.toFixed(2)}%`, `transparent ${b.toFixed(2)}%`);
+    }
+    sc.style.setProperty('--chg-map', `linear-gradient(to bottom, ${stops.join(', ')})`);
+  }
 }
 function closeDiff() {
   clearWordMarks();
@@ -2599,6 +2645,12 @@ function bind() {
   };
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
   document.addEventListener('selectionchange', debounce(markSameWord, 140));
+  { // redraw the change overview whenever the diff content or its size changes
+    const again = debounce(buildChangeMap, 60);
+    new MutationObserver(again).observe($('#diff-body'), { childList: true });
+    new ResizeObserver(again).observe($('#diff-body'));
+    new MutationObserver(again).observe($('#diff-view'), { attributes: true, attributeFilter: ['hidden'] });
+  }
   $('#diff-ruler').addEventListener('click', (e) => {
     const t = e.target.closest('i'); if (!t) return;
     for (const sc of [...document.querySelectorAll('#diff-body .pane'), $('#diff-body')]) sc.scrollTop = Math.max(0, +t.dataset.y - sc.clientHeight / 3);

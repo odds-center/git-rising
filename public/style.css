@@ -780,3 +780,10 @@ body.dragging-ref, body.dragging-ref * { cursor: grabbing !important; user-selec
 .pill svg { flex: none; }
 .tab.flash { animation: tab-flash .9s ease-out; }
 @keyframes tab-flash { 0% { background: var(--sel); box-shadow: 0 0 0 2px var(--sel-line); } 100% { background: var(--elev2); box-shadow: 0 0 0 1px var(--border); } }
+
+/* change overview in the diff scrollbar track (set by buildChangeMap) */
+#diff-body::-webkit-scrollbar-track:vertical, #diff-body .pane::-webkit-scrollbar-track:vertical { background: var(--chg-map, transparent) no-repeat; background-size: 8px 100%; background-position: center; }
+#diff-body::-webkit-scrollbar-thumb:vertical, #diff-body .pane::-webkit-scrollbar-thumb:vertical { background: color-mix(in srgb, var(--text) 22%, transparent); background-clip: padding-box; }
+#diff-body::-webkit-scrollbar-thumb:vertical:hover, #diff-body .pane::-webkit-scrollbar-thumb:vertical:hover { background: color-mix(in srgb, var(--text) 34%, transparent); background-clip: padding-box; }
+.fl.gone { box-shadow: inset 0 2px 0 var(--del); }
+.fl.gone.add { box-shadow: inset 3px 0 0 var(--add), inset 0 2px 0 var(--del); }
